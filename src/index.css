@@ -36,6 +36,24 @@ body {
   clip-path: polygon(0% 100%, 8% 82%, 18% 90%, 30% 75%, 45% 85%, 58% 68%, 68% 80%, 78% 70%, 88% 85%, 100% 72%, 100% 100%);
 }
 
+@keyframes marquee-left {
+  0% { transform: translateX(350px); }
+  100% { transform: translateX(-150px); }
+}
+
+@keyframes marquee-right {
+  0% { transform: translateX(-150px); }
+  100% { transform: translateX(350px); }
+}
+
+.animate-marquee-left {
+  animation: marquee-left 12s linear infinite;
+}
+
+.animate-marquee-right {
+  animation: marquee-right 9s linear infinite;
+}
+
 /* Hide scrollbars for telemetry modules */
 ::-webkit-scrollbar {
   width: 6px;
