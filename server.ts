@@ -137,13 +137,14 @@ async function initMysql() {
   }
 
   try {
-    console.log(`[DB] Tentando conexão MySQL no host "${process.env.DB_HOST}"...`);
+    console.log(`[DB] Tentando conexão MySQL no host "${process.env.DB_HOST}" (timeout de 2s)...`);
     
     // 1. Tenta comunicar sem banco pré-selecionado para garantir a auto-criação
     const tempConn = await mysql.createConnection({
       host: process.env.DB_HOST,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
+      connectTimeout: 2000
     });
     
     await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME}\`;`);
@@ -157,7 +158,8 @@ async function initMysql() {
       database: process.env.DB_NAME,
       waitForConnections: true,
       connectionLimit: 12,
-      queueLimit: 0
+      queueLimit: 0,
+      connectTimeout: 2000
     });
 
     // 3. Sincronização automática das tabelas essenciais para o sistema
@@ -280,8 +282,10 @@ function getGeminiClient(): GoogleGenAI | null {
 }
 
 async function startServer() {
-  // Inicializa banco de dados MySQL de produção ou fallback local
-  await initMysql();
+  // Inicializa banco de dados MySQL de produção ou fallback local de forma assíncrona
+  initMysql().catch((err) => {
+    console.error("[DB] Falha de conexão assíncrona no MySQL:", err);
+  });
 
   const app = express();
   app.use(express.json());

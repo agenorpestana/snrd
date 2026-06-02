@@ -408,11 +408,6 @@ export default function AdminPanel({
                 placeholder="Insira a senha do admin..."
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[#00A767]"
               />
-              <p className="text-[10px] text-slate-550 font-mono mt-2 bg-slate-950 p-2 rounded border border-slate-800 text-slate-400">
-                💡 Conta Padrão do Sistema:<br />
-                E-mail: <span className="text-emerald-400">suporte@unityautomacoes.com.br</span><br />
-                Senha: <span className="text-emerald-400">200616</span>
-              </p>
             </div>
 
             {loginError && (
