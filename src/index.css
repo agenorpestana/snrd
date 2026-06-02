@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;650;700&family=JetBrains+Mono:wght@400;500;750&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  background-color: #0b1315;
+  color: #f1f5f9;
+  font-family: var(--font-sans);
+}
+
+/* Custom Scanlines styling to make simulated camera stream look incredibly authentic */
+.bg-scanlines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.25) 50%
+  ), linear-gradient(
+    90deg, 
+    rgba(255, 0, 0, 0.03), 
+    rgba(0, 255, 0, 0.01), 
+    rgba(0, 0, 255, 0.03)
+  );
+  background-size: 100% 4px, 6px 100%;
+}
+
+/* Custom background animation indicator */
+.animate-pulse-slow {
+  animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Mountain clip-path utility for airport scene */
+.clip-mountain {
+  clip-path: polygon(0% 100%, 8% 82%, 18% 90%, 30% 75%, 45% 85%, 58% 68%, 68% 80%, 78% 70%, 88% 85%, 100% 72%, 100% 100%);
+}
+
+/* Hide scrollbars for telemetry modules */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090e10;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #253337;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00A767;
+}

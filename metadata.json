@@ -1,0 +1,6 @@
+{
+  "name": "Central de Câmeras RTSP",
+  "description": "Sistema de monitoramento por câmeras RTSP/ONVIF com integração de previsão do tempo em tempo real e controle PTZ.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
