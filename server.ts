@@ -149,8 +149,9 @@ async function initMysql() {
     
     await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME}\`;`);
     await tempConn.end();
+    console.log(`[DB] Banco de dados "${process.env.DB_NAME}" garantido.`);
 
-    // 2. Pools persistente
+    // 2. Pool persistente
     mysqlPool = mysql.createPool({
       host: process.env.DB_HOST,
       user: process.env.DB_USER,
@@ -162,93 +163,126 @@ async function initMysql() {
       connectTimeout: 2000
     });
 
-    // 3. Sincronização automática das tabelas essenciais para o sistema
-    await mysqlPool.query(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key_name VARCHAR(100) PRIMARY KEY,
-        value_text TEXT
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    `);
+    // Se o pool foi conectado, consideramos o MySQL ativo
+    isMysqlEnabled = true;
 
-    await mysqlPool.query(`
-      CREATE TABLE IF NOT EXISTS cameras (
-        id VARCHAR(50) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        streamUrl TEXT NOT NULL,
-        city VARCHAR(255) NOT NULL,
-        description TEXT,
-        onvifIp VARCHAR(100),
-        onvifPort INT DEFAULT 80,
-        onvifUser VARCHAR(100),
-        isPtzCompatible TINYINT(1) DEFAULT 0,
-        ptzStatus TEXT,
-        modelName VARCHAR(255),
-        serialNumber VARCHAR(255),
-        firmwareVersion VARCHAR(255)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    `);
+    // 3. Sincronização automática das tabelas essenciais para o sistema com tratamento granular de erros
+    try {
+      await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key_name VARCHAR(100) PRIMARY KEY,
+          value_text TEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      console.log("[DB] Tabela 'settings' garantida.");
+    } catch (tblErr: any) {
+      console.error("[DB] Falha crítica ao criar/verificar tabela 'settings':", tblErr.message);
+    }
 
-    await mysqlPool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id VARCHAR(55) PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        role VARCHAR(50) DEFAULT 'admin'
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    `);
+    try {
+      await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS cameras (
+          id VARCHAR(50) PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          streamUrl TEXT NOT NULL,
+          city VARCHAR(255) NOT NULL,
+          description TEXT,
+          onvifIp VARCHAR(100),
+          onvifPort INT DEFAULT 80,
+          onvifUser VARCHAR(100),
+          isPtzCompatible TINYINT(1) DEFAULT 0,
+          ptzStatus TEXT,
+          modelName VARCHAR(255),
+          serialNumber VARCHAR(255),
+          firmwareVersion VARCHAR(255)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      console.log("[DB] Tabela 'cameras' garantida.");
+    } catch (tblErr: any) {
+      console.error("[DB] Falha crítica ao criar/verificar tabela 'cameras':", tblErr.message);
+    }
+
+    try {
+      await mysqlPool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id VARCHAR(55) PRIMARY KEY,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          password_hash VARCHAR(255) NOT NULL,
+          role VARCHAR(50) DEFAULT 'admin'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      console.log("[DB] Tabela 'users' garantida.");
+    } catch (tblErr: any) {
+      console.error("[DB] Falha crítica ao criar/verificar tabela 'users':", tblErr.message);
+    }
 
     // 4. Seed da senha do administrador
-    const [settingRows]: any = await mysqlPool.query("SELECT * FROM settings WHERE key_name = 'adminPasswordHash'");
-    if (settingRows.length === 0) {
-      await mysqlPool.query(
-        "INSERT INTO settings (key_name, value_text) VALUES ('adminPasswordHash', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918')"
-      );
+    try {
+      const [settingRows]: any = await mysqlPool.query("SELECT * FROM settings WHERE key_name = 'adminPasswordHash'");
+      if (settingRows.length === 0) {
+        await mysqlPool.query(
+          "INSERT INTO settings (key_name, value_text) VALUES ('adminPasswordHash', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918')"
+        );
+        console.log("[DB] Seed administrativo 'adminPasswordHash' inserido com sucesso.");
+      }
+    } catch (seedErr: any) {
+      console.error("[DB] Falha ao fazer seed da senha administrativa em 'settings':", seedErr.message);
     }
 
     // 4.1 Seed do usuário super admin padrão 'suporte@unityautomacoes.com.br'
-    const [userRows]: any = await mysqlPool.query("SELECT * FROM users WHERE email = 'suporte@unityautomacoes.com.br'");
-    if (userRows.length === 0) {
-      await mysqlPool.query(
-        "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
-        [
-          "user-super",
-          "suporte@unityautomacoes.com.br",
-          "63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1",
-          "admin"
-        ]
-      );
-      console.log("[DB] Criado usuário super admin padrão: suporte@unityautomacoes.com.br");
+    try {
+      const [userRows]: any = await mysqlPool.query("SELECT * FROM users WHERE email = 'suporte@unityautomacoes.com.br'");
+      if (userRows.length === 0) {
+        await mysqlPool.query(
+          "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
+          [
+            "user-super",
+            "suporte@unityautomacoes.com.br",
+            "63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1",
+            "admin"
+          ]
+        );
+        console.log("[DB] Criado usuário super admin padrão com sucesso: suporte@unityautomacoes.com.br");
+      } else {
+        console.log("[DB] Usuário padrão suporte@unityautomacoes.com.br já existe no banco.");
+      }
+    } catch (seedErr: any) {
+      console.error("[DB] Falha crítica ao realizar seed do usuário padrão 'users':", seedErr.message);
     }
 
     // 5. Seed das câmeras padrões SNRD
-    const [cameraRows]: any = await mysqlPool.query("SELECT COUNT(*) as count FROM cameras");
-    if (cameraRows[0].count === 0) {
-      for (const cam of DEFAULT_CAMERAS) {
-        await mysqlPool.query(
-          `INSERT INTO cameras 
-          (id, name, streamUrl, city, description, onvifIp, onvifPort, onvifUser, isPtzCompatible, ptzStatus, modelName, serialNumber, firmwareVersion)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            cam.id,
-            cam.name,
-            cam.streamUrl,
-            cam.city,
-            cam.description,
-            cam.onvifIp,
-            cam.onvifPort,
-            cam.onvifUser,
-            cam.isPtzCompatible ? 1 : 0,
-            JSON.stringify(cam.ptzStatus),
-            cam.modelName,
-            cam.serialNumber,
-            cam.firmwareVersion
-          ]
-        );
+    try {
+      const [cameraRows]: any = await mysqlPool.query("SELECT COUNT(*) as count FROM cameras");
+      if (cameraRows[0].count === 0) {
+        for (const cam of DEFAULT_CAMERAS) {
+          await mysqlPool.query(
+            `INSERT INTO cameras 
+            (id, name, streamUrl, city, description, onvifIp, onvifPort, onvifUser, isPtzCompatible, ptzStatus, modelName, serialNumber, firmwareVersion)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              cam.id,
+              cam.name,
+              cam.streamUrl,
+              cam.city,
+              cam.description,
+              cam.onvifIp,
+              cam.onvifPort,
+              cam.onvifUser,
+              cam.isPtzCompatible ? 1 : 0,
+              JSON.stringify(cam.ptzStatus),
+              cam.modelName,
+              cam.serialNumber,
+              cam.firmwareVersion
+            ]
+          );
+        }
+        console.log("[DB] Seed de câmeras padrão inserido com sucesso.");
       }
+    } catch (seedErr: any) {
+      console.error("[DB] Falha ao fazer seed de câmeras padrões:", seedErr.message);
     }
 
-    isMysqlEnabled = true;
-    console.log("[DB] Inicialização do MySQL concluída com sucesso. Banco sincronizado.");
+    console.log("[DB] Inicialização e verificação das tabelas do MySQL concluída.");
   } catch (err: any) {
     console.error("[DB] Falha de conexão inicial no MySQL. Verifique credenciais. Entrando em fallback JSON. Detalhes:", err.message);
     isMysqlEnabled = false;

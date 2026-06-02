@@ -7,6 +7,15 @@ CREATE TABLE IF NOT EXISTS `settings` (
   PRIMARY KEY (`key_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `users` (
+  `id` VARCHAR(55) NOT NULL,
+  `email` VARCHAR(255) NOT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `role` VARCHAR(50) DEFAULT 'admin',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `cameras` (
   `id` VARCHAR(50) NOT NULL,
   `name` VARCHAR(255) NOT NULL,
@@ -24,11 +33,17 @@ CREATE TABLE IF NOT EXISTS `cameras` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Seed padrão: Senha do Administrador padronizada
+-- Seed padrão: Senha do Administrador padronizada (antiga)
 -- Valor padrão encryptado em SHA-256 é 'admin'
 INSERT INTO `settings` (`key_name`, `value_text`) 
 VALUES ('adminPasswordHash', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918')
 ON DUPLICATE KEY UPDATE `key_name` = `key_name`;
+
+-- Seed padrão: Super usuário administrador do sistema (Novo Padrão)
+-- E-mail: suporte@unityautomacoes.com.br | Senha: 200616 (SHA-256)
+INSERT INTO `users` (`id`, `email`, `password_hash`, `role`)
+VALUES ('user-super', 'suporte@unityautomacoes.com.br', '63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1', 'admin')
+ON DUPLICATE KEY UPDATE `id` = `id`;
 
 -- Seed padrão: Câmeras SNRD de monitoramento inicial
 INSERT INTO `cameras` (`id`, `name`, `streamUrl`, `city`, `description`, `onvifIp`, `onvifPort`, `onvifUser`, `isPtzCompatible`, `ptzStatus`, `modelName`, `serialNumber`, `firmwareVersion`)
