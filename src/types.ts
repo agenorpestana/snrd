@@ -39,3 +39,9 @@ export interface ONVIFDevice {
   firmware: string;
   rtspUrl: string;
 }
+
+export interface AppUser {
+  id: string;
+  email: string;
+  role: string;
+}

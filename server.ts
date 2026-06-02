@@ -76,14 +76,48 @@ const DEFAULT_CAMERAS = [
 // Fallback JSON-based Database Operations
 function loadDb() {
   if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ cameras: DEFAULT_CAMERAS, adminPasswordHash: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918" }));
+    fs.writeFileSync(DB_FILE, JSON.stringify({ 
+      cameras: DEFAULT_CAMERAS, 
+      adminPasswordHash: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+      users: [
+        {
+          id: "user-super",
+          email: "suporte@unityautomacoes.com.br",
+          passwordHash: "63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1",
+          role: "admin"
+        }
+      ]
+    }));
   }
   try {
     const raw = fs.readFileSync(DB_FILE, "utf-8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!parsed.users) {
+      parsed.users = [
+        {
+          id: "user-super",
+          email: "suporte@unityautomacoes.com.br",
+          passwordHash: "63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1",
+          role: "admin"
+        }
+      ];
+      fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 2));
+    }
+    return parsed;
   } catch (err) {
     console.error("Erro abrindo BD local, restaurando padrões:", err);
-    return { cameras: DEFAULT_CAMERAS, adminPasswordHash: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918" };
+    return { 
+      cameras: DEFAULT_CAMERAS, 
+      adminPasswordHash: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+      users: [
+        {
+          id: "user-super",
+          email: "suporte@unityautomacoes.com.br",
+          passwordHash: "63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1",
+          role: "admin"
+        }
+      ]
+    };
   }
 }
 
@@ -152,12 +186,36 @@ async function initMysql() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    await mysqlPool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(55) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'admin'
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     // 4. Seed da senha do administrador
     const [settingRows]: any = await mysqlPool.query("SELECT * FROM settings WHERE key_name = 'adminPasswordHash'");
     if (settingRows.length === 0) {
       await mysqlPool.query(
         "INSERT INTO settings (key_name, value_text) VALUES ('adminPasswordHash', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918')"
       );
+    }
+
+    // 4.1 Seed do usuário super admin padrão 'suporte@unityautomacoes.com.br'
+    const [userRows]: any = await mysqlPool.query("SELECT * FROM users WHERE email = 'suporte@unityautomacoes.com.br'");
+    if (userRows.length === 0) {
+      await mysqlPool.query(
+        "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
+        [
+          "user-super",
+          "suporte@unityautomacoes.com.br",
+          "63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1",
+          "admin"
+        ]
+      );
+      console.log("[DB] Criado usuário super admin padrão: suporte@unityautomacoes.com.br");
     }
 
     // 5. Seed das câmeras padrões SNRD
@@ -241,33 +299,141 @@ async function startServer() {
 
   // --- API ROUTES ---
 
-  // Auth Login Endpoint
+  // Auth Login Endpoint (Multi-user supports email + password check)
   app.post("/api/auth/login", async (req, res) => {
-    const { password } = req.body;
-    if (!password) {
-      return res.status(400).json({ error: "Senha necessária para continuar." });
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "E-mail e senha são obrigatórios para continuar." });
     }
     const hash = crypto.createHash("sha256").update(password).digest("hex");
     
-    let hashToCheck = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
     if (isMysqlEnabled && mysqlPool) {
       try {
-        const [rows]: any = await mysqlPool.query("SELECT value_text FROM settings WHERE key_name = 'adminPasswordHash'");
-        if (rows.length > 0) {
-          hashToCheck = rows[0].value_text;
+        const [rows]: any = await mysqlPool.query("SELECT * FROM users WHERE email = ?", [email]);
+        if (rows.length > 0 && rows[0].password_hash === hash) {
+          return res.json({ 
+            token: "admin-token-session", 
+            email: rows[0].email,
+            role: rows[0].role,
+            message: "Autenticação efetuada com sucesso." 
+          });
         }
       } catch (err) {
         console.error("Erro consultando credenciais no MySQL:", err);
+        return res.status(500).json({ error: "Erro interno no servidor de banco de dados." });
       }
     } else {
       const db = loadDb();
-      hashToCheck = db.adminPasswordHash;
+      const userList = db.users || [];
+      const matched = userList.find((u: any) => u.email === email && u.passwordHash === hash);
+      if (matched) {
+        return res.json({ 
+          token: "admin-token-session", 
+          email: matched.email,
+          role: matched.role || "admin",
+          message: "Autenticação efetuada com sucesso." 
+        });
+      }
     }
     
-    if (hash === hashToCheck) {
-      res.json({ token: "admin-token-session", message: "Autenticação efetuada com sucesso." });
+    return res.status(401).json({ error: "E-mail ou senha incorretos." });
+  });
+
+  // Get all users (Admin only)
+  app.get("/api/users", checkAdminAuth, async (req, res) => {
+    if (isMysqlEnabled && mysqlPool) {
+      try {
+        const [rows]: any = await mysqlPool.query("SELECT id, email, role FROM users");
+        return res.json(rows);
+      } catch (err) {
+        console.error("Erro listando usuários no MySQL:", err);
+        return res.status(500).json({ error: "Erro de banco de dados." });
+      }
     } else {
-      res.status(401).json({ error: "Senha de administrador incorreta." });
+      const db = loadDb();
+      const sanitized = (db.users || []).map((u: any) => ({
+        id: u.id,
+        email: u.email,
+        role: u.role || "admin"
+      }));
+      return res.json(sanitized);
+    }
+  });
+
+  // Create a user (Admin only)
+  app.post("/api/users", checkAdminAuth, async (req, res) => {
+    const { email, password, role } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+    }
+    const hash = crypto.createHash("sha256").update(password).digest("hex");
+    const newId = "user-" + Date.now();
+
+    if (isMysqlEnabled && mysqlPool) {
+      try {
+        // Check uniqueness
+        const [existing]: any = await mysqlPool.query("SELECT * FROM users WHERE email = ?", [email]);
+        if (existing.length > 0) {
+          return res.status(400).json({ error: "Este endereço de e-mail já está cadastrado." });
+        }
+        await mysqlPool.query(
+          "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
+          [newId, email, hash, role || "admin"]
+        );
+        return res.status(201).json({ id: newId, email, role: role || "admin" });
+      } catch (err) {
+        console.error("Erro criando usuário no MySQL:", err);
+        return res.status(500).json({ error: "Erro de banco de dados." });
+      }
+    } else {
+      const db = loadDb();
+      if (!db.users) db.users = [];
+      const isExist = db.users.some((u: any) => u.email === email);
+      if (isExist) {
+        return res.status(400).json({ error: "Este endereço de e-mail já está cadastrado." });
+      }
+      const newUser = {
+        id: newId,
+        email,
+        passwordHash: hash,
+        role: role || "admin"
+      };
+      db.users.push(newUser);
+      saveDb(db);
+      return res.status(201).json({ id: newId, email, role: newUser.role });
+    }
+  });
+
+  // Delete a user (Admin only)
+  app.delete("/api/users/:id", checkAdminAuth, async (req, res) => {
+    const { id } = req.params;
+    
+    // Prevent deletion of 'user-super' default account to avoid getting locked out
+    if (id === "user-super") {
+      return res.status(400).json({ error: "Não é permitido excluir o super usuário de segurança." });
+    }
+
+    if (isMysqlEnabled && mysqlPool) {
+      try {
+        const [result]: any = await mysqlPool.query("DELETE FROM users WHERE id = ?", [id]);
+        if (result.affectedRows === 0) {
+          return res.status(404).json({ error: "Usuário não localizado." });
+        }
+        return res.json({ message: "Usuário removido com sucesso." });
+      } catch (err) {
+        console.error("Erro deletando usuário do MySQL:", err);
+        return res.status(500).json({ error: "Erro de banco de dados." });
+      }
+    } else {
+      const db = loadDb();
+      if (!db.users) db.users = [];
+      const beforeLength = db.users.length;
+      db.users = db.users.filter((u: any) => u.id !== id);
+      if (db.users.length === beforeLength) {
+        return res.status(404).json({ error: "Usuário não localizado." });
+      }
+      saveDb(db);
+      return res.json({ message: "Usuário removido com sucesso." });
     }
   });
 

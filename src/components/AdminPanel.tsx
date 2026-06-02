@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Camera, ONVIFDevice } from "../types";
-import { Shield, Key, Eye, EyeOff, Plus, Edit3, Trash2, Database, HelpCircle, AlertCircle, RefreshCw, Cpu, Link, Zap, HelpCircle as Help } from "lucide-react";
+import { Shield, Key, Eye, EyeOff, Plus, Edit3, Trash2, Database, HelpCircle, AlertCircle, RefreshCw, Cpu, Link, Zap, HelpCircle as Help, Users } from "lucide-react";
 
 interface AdminPanelProps {
   isAdmin: boolean;
@@ -21,6 +21,7 @@ export default function AdminPanel({
   onUpdateCamera,
   onDeleteCamera,
 }: AdminPanelProps) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -44,6 +45,37 @@ export default function AdminPanel({
   const [scanStatus, setScanStatus] = useState<"idle" | "scanning" | "success" | "error">("idle");
   const [scanError, setScanError] = useState("");
 
+  // Users listing & management states
+  const [users, setUsers] = useState<any[]>([]);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPass, setNewUserPass] = useState("");
+  const [newUserRole, setNewUserRole] = useState("admin");
+  const [userCreatedMsg, setUserCreatedMsg] = useState("");
+  const [userErrorMsg, setUserErrorMsg] = useState("");
+
+  const fetchUsers = async () => {
+    try {
+      const token = localStorage.getItem("rtsp_admin_token") || "admin-token-session";
+      const res = await fetch("/api/users", {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar usuários:", err);
+    }
+  };
+
+  React.useEffect(() => {
+    if (isAdmin) {
+      fetchUsers();
+    }
+  }, [isAdmin]);
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
@@ -53,20 +85,84 @@ export default function AdminPanel({
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Senha incorreta.");
+        throw new Error(data.error || "E-mail ou senha incorretos.");
       }
 
       onLogin(data.token);
       setPassword("");
+      setEmail("");
     } catch (err: any) {
       setLoginError(err.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUserCreatedMsg("");
+    setUserErrorMsg("");
+
+    if (!newUserEmail || !newUserPass) {
+      setUserErrorMsg("E-mail e senha são obrigatórios.");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("rtsp_admin_token") || "admin-token-session";
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          email: newUserEmail,
+          password: newUserPass,
+          role: newUserRole
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Falha ao cadastrar usuário.");
+      }
+
+      setUserCreatedMsg(`Usuário ${data.email} cadastrado com sucesso!`);
+      setNewUserEmail("");
+      setNewUserPass("");
+      fetchUsers();
+    } catch (err: any) {
+      setUserErrorMsg(err.message);
+    }
+  };
+
+  const handleDeleteUser = async (id: string, userEmail: string) => {
+    const confirmDelete = window.confirm(`Deseja realmente remover o usuário "${userEmail}"?`);
+    if (!confirmDelete) return;
+
+    try {
+      const token = localStorage.getItem("rtsp_admin_token") || "admin-token-session";
+      const res = await fetch(`/api/users/${id}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Falha ao remover usuário.");
+      }
+
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -284,8 +380,21 @@ export default function AdminPanel({
               <Key className="h-10 w-10 text-[#00A767] mx-auto opacity-80" />
               <h3 className="font-semibold text-lg">Acesso Protegido</h3>
               <p className="text-xs text-slate-400">
-                Digite a credencial de segurança do console administrativo para configurar seus dispositivos.
+                Identifique-se com suas credenciais do console administrativo para configurar seus dispositivos e usuários.
               </p>
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="admin-email-field" className="text-xs text-slate-300 font-medium">E-mail de Usuário:</label>
+              <input
+                id="admin-email-field"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="suporte@unityautomacoes.com.br"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[#00A767]"
+              />
             </div>
 
             <div className="space-y-1">
@@ -299,8 +408,10 @@ export default function AdminPanel({
                 placeholder="Insira a senha do admin..."
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-[#00A767]"
               />
-              <p className="text-[10px] text-slate-500 font-mono mt-1">
-                Dica de Homologação: A senha padrão configurada é: <span className="text-emerald-400">admin</span>
+              <p className="text-[10px] text-slate-550 font-mono mt-2 bg-slate-950 p-2 rounded border border-slate-800 text-slate-400">
+                💡 Conta Padrão do Sistema:<br />
+                E-mail: <span className="text-emerald-400">suporte@unityautomacoes.com.br</span><br />
+                Senha: <span className="text-emerald-400">200616</span>
               </p>
             </div>
 
@@ -583,6 +694,130 @@ export default function AdminPanel({
                     Nenhum dispositivo registrado. Adicione um através do formulário ao lado.
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* USER MANAGEMENT SECTION */}
+          <div className="pt-6 mt-8 border-t border-slate-800">
+            <div className="flex items-center space-x-2.5 mb-6 text-[#00A767]">
+              <Users className="h-5 w-5" />
+              <h3 className="text-sm uppercase font-bold tracking-widest text-[#00A767]">
+                Gerenciamento de Usuários do Sistema
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+              {/* CREATE USER FORM */}
+              <div className="bg-slate-950/45 p-5 rounded-xl border border-slate-800">
+                <h4 className="text-xs uppercase font-bold tracking-wider text-slate-350 mb-4">
+                  Cadastrar Novo Usuário
+                </h4>
+
+                <form onSubmit={handleCreateUser} className="space-y-4">
+                  <div className="space-y-1">
+                    <label htmlFor="new_usr_email" className="text-xs text-slate-300 font-medium">E-mail do Usuário:</label>
+                    <input
+                      id="new_usr_email"
+                      type="email"
+                      required
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      placeholder="usuario@unityautomacoes.com.br"
+                      className="w-full bg-[#1c2c31] border border-slate-850 px-3 py-2 rounded-lg text-xs text-slate-150 focus:outline-none focus:border-[#00A767]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="new_usr_password" className="text-xs text-slate-300 font-medium font-sans">Senha de Acesso:</label>
+                    <input
+                      id="new_usr_password"
+                      type="password"
+                      required
+                      value={newUserPass}
+                      onChange={(e) => setNewUserPass(e.target.value)}
+                      placeholder="Defina uma senha robusta..."
+                      className="w-full bg-[#1c2c31] border border-slate-850 px-3 py-2 rounded-lg text-xs text-slate-150 focus:outline-none focus:border-[#00A767]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="new_usr_role" className="text-xs text-slate-300 font-medium">Privilégio:</label>
+                    <select
+                      id="new_usr_role"
+                      value={newUserRole}
+                      onChange={(e) => setNewUserRole(e.target.value)}
+                      className="w-full bg-[#1c2c31] border border-slate-850 px-3 py-2 rounded-lg text-xs text-slate-150 focus:outline-none focus:border-[#00A767]"
+                    >
+                      <option value="admin">Administrador (Completo)</option>
+                      <option value="viewer">Visualizador (Leitura)</option>
+                    </select>
+                  </div>
+
+                  {userCreatedMsg && (
+                    <p className="text-xs text-emerald-400 font-medium font-mono py-1">
+                      ✓ {userCreatedMsg}
+                    </p>
+                  )}
+
+                  {userErrorMsg && (
+                    <p className="text-xs text-red-400 font-medium font-mono py-1">
+                      ✗ {userErrorMsg}
+                    </p>
+                  )}
+
+                  <button
+                    id="save-user-btn"
+                    type="submit"
+                    className="w-full bg-[#00A767] hover:bg-[#009055] text-white font-bold py-2 px-3 rounded-lg text-xs tracking-wide cursor-pointer transition-all active:scale-95 text-center flex items-center justify-center space-x-1.5"
+                  >
+                    <span>Salvar Novo Usuário</span>
+                  </button>
+                </form>
+              </div>
+
+              {/* LIST USERS SECTOR */}
+              <div className="space-y-4">
+                <h4 className="text-xs uppercase font-bold tracking-wider text-slate-350 mb-4">
+                  Usuários Ativos ({users.length})
+                </h4>
+
+                <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
+                  {users.map((u) => (
+                    <div
+                      key={u.id}
+                      className="bg-slate-950 p-4 rounded-xl border border-slate-850 hover:border-slate-800 transition-all flex items-center justify-between"
+                    >
+                      <div className="space-y-1 min-w-0 flex-1 pr-3">
+                        <p className="text-xs font-semibold text-white truncate">
+                          {u.email}
+                        </p>
+                        <div className="flex items-center space-x-2">
+                          <span className={`text-[9px] uppercase font-mono px-1.5 py-0.5 rounded leading-none ${
+                            u.id === "user-super" 
+                              ? "bg-indigo-950 text-indigo-300 border border-indigo-900 animate-pulse" 
+                              : "bg-slate-800 text-slate-450 text-slate-400"
+                          }`}>
+                            {u.id === "user-super" ? "Super Admin" : "Privilégio: " + u.role}
+                          </span>
+                        </div>
+                      </div>
+
+                      {u.id !== "user-super" ? (
+                        <button
+                          id={`delete-user-${u.id}`}
+                          onClick={() => handleDeleteUser(u.id, u.email)}
+                          className="p-1.5 hover:bg-slate-800 rounded text-red-400 hover:text-red-300 transition-all cursor-pointer text-xs font-semibold font-mono"
+                          title="Remover Usuário"
+                        >
+                          EXCLUIR
+                        </button>
+                      ) : (
+                        <span className="text-[10px] font-mono text-slate-600 select-none">SISTEMA</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
