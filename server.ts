@@ -5,8 +5,12 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import mysql from "mysql2/promise";
+import dotenv from "dotenv";
 
-const PORT = 3000;
+// Load environment variables from .env file
+dotenv.config();
+
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 const DB_FILE = path.join(process.cwd(), "cameras.json");
 
 // Default Cameras to pre-seed the database
