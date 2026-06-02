@@ -347,28 +347,46 @@ async function startServer() {
     if (!email || !password) {
       return res.status(400).json({ error: "E-mail e senha são obrigatórios para continuar." });
     }
-    const hash = crypto.createHash("sha256").update(password).digest("hex");
+    
+    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanPassword = String(password).trim();
+    const hash = crypto.createHash("sha256").update(cleanPassword).digest("hex");
+    
+    console.log(`[AUTH] Tentativa de login para email="${cleanEmail}". Hash gerado: "${hash}"`);
     
     if (isMysqlEnabled && mysqlPool) {
       try {
-        const [rows]: any = await mysqlPool.query("SELECT * FROM users WHERE email = ?", [email]);
-        if (rows.length > 0 && rows[0].password_hash === hash) {
-          return res.json({ 
-            token: "admin-token-session", 
-            email: rows[0].email,
-            role: rows[0].role,
-            message: "Autenticação efetuada com sucesso." 
-          });
+        const [rows]: any = await mysqlPool.query("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?", [cleanEmail]);
+        console.log(`[AUTH] MySQL encontrou ${rows.length} usuários correspondentes.`);
+        
+        if (rows.length > 0) {
+          const user = rows[0];
+          console.log(`[AUTH] Comparando hash enviado "${hash}" com hash do banco "${user.password_hash}"`);
+          
+          if (user.password_hash === hash) {
+            console.log(`[AUTH] Login bem-sucedido via MySQL para: ${cleanEmail}`);
+            return res.json({ 
+              token: "admin-token-session", 
+              email: user.email,
+              role: user.role,
+              message: "Autenticação efetuada com sucesso." 
+            });
+          }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Erro consultando credenciais no MySQL:", err);
         return res.status(500).json({ error: "Erro interno no servidor de banco de dados." });
       }
     } else {
+      console.log(`[AUTH] Usando fallback de banco local JSON.`);
       const db = loadDb();
       const userList = db.users || [];
-      const matched = userList.find((u: any) => u.email === email && u.passwordHash === hash);
+      const matched = userList.find((u: any) => 
+        String(u.email).trim().toLowerCase() === cleanEmail && 
+        u.passwordHash === hash
+      );
       if (matched) {
+        console.log(`[AUTH] Login bem-sucedido via JSON local para: ${cleanEmail}`);
         return res.json({ 
           token: "admin-token-session", 
           email: matched.email,
@@ -378,6 +396,7 @@ async function startServer() {
       }
     }
     
+    console.warn(`[AUTH] Falha de login para o e-mail: ${cleanEmail} (Senha incorreta ou usuário inexistente)`);
     return res.status(401).json({ error: "E-mail ou senha incorretos." });
   });
 
