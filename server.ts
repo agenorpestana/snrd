@@ -242,13 +242,22 @@ async function initMysql() {
           [
             "user-super",
             "suporte@unityautomacoes.com.br",
-            "63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1",
+            "4e839acad179b2868bc041b62b069b70698643b539c3325a818539ff03f93e8f",
             "admin"
           ]
         );
         console.log("[DB] Criado usuário super admin padrão com sucesso: suporte@unityautomacoes.com.br");
       } else {
-        console.log("[DB] Usuário padrão suporte@unityautomacoes.com.br já existe no banco.");
+        console.log("[DB] Usuário padrão suporte@unityautomacoes.com.br já existe no banco. Verificando integridade do hash...");
+        // Garante que o hash do administrador padrão seja atualizado para a versão correta, caso estivesse usando o hash incorreto anterior
+        await mysqlPool.query(
+          "UPDATE users SET password_hash = ? WHERE email = ? AND (password_hash = '63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1' OR password_hash = '')",
+          [
+            "4e839acad179b2868bc041b62b069b70698643b539c3325a818539ff03f93e8f",
+            "suporte@unityautomacoes.com.br"
+          ]
+        );
+        console.log("[DB] Hash do usuário super admin verificado/atualizado com sucesso.");
       }
     } catch (seedErr: any) {
       console.error("[DB] Falha crítica ao realizar seed do usuário padrão 'users':", seedErr.message);

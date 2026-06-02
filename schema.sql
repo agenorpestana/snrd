@@ -42,7 +42,7 @@ ON DUPLICATE KEY UPDATE `key_name` = `key_name`;
 -- Seed padrão: Super usuário administrador do sistema (Novo Padrão)
 -- E-mail: suporte@unityautomacoes.com.br | Senha: 200616 (SHA-256)
 INSERT INTO `users` (`id`, `email`, `password_hash`, `role`)
-VALUES ('user-super', 'suporte@unityautomacoes.com.br', '63b82a7a40b8a1c97efbbffc155518b5bf67d8d21c324bc9eafef135fb0fa4b1', 'admin')
+VALUES ('user-super', 'suporte@unityautomacoes.com.br', '4e839acad179b2868bc041b62b069b70698643b539c3325a818539ff03f93e8f', 'admin')
 ON DUPLICATE KEY UPDATE `id` = `id`;
 
 -- Seed padrão: Câmeras SNRD de monitoramento inicial
