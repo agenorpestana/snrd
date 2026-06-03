@@ -893,6 +893,75 @@ async function startServer() {
     }
   });
 
+  // Helper function to send real physical PTZ commands to Intelbras/Dahua DOME cameras matching the requested direction
+  async function sendPhysicalPtzCommand(camera: any, action: string, speed: number) {
+    const ip = camera.onvifIp || "";
+    if (!ip) return;
+
+    // Check if we should ignore reset
+    if (action === "zoom_reset") return;
+
+    // Extract user and password credentials securely from streamUrl (or fall back to onvifUser)
+    let username = camera.onvifUser || "admin";
+    let password = "";
+    const streamUrl = String(camera.streamUrl || "");
+    const authMatch = streamUrl.match(/rtsp:\/\/([^:]+):([^@]+)@/);
+    if (authMatch) {
+      username = authMatch[1];
+      password = authMatch[2];
+    }
+
+    // Map action to Dahua CGI PTZ codes
+    let ptzCode = "";
+    switch (action) {
+      case "up": ptzCode = "Up"; break;
+      case "down": ptzCode = "Down"; break;
+      case "left": ptzCode = "Left"; break;
+      case "right": ptzCode = "Right"; break;
+      case "zoom_in": ptzCode = "ZoomTele"; break;
+      case "zoom_out": ptzCode = "ZoomWide"; break;
+      default: return; // ignore unrecognized actions
+    }
+
+    // Map velocity parameters
+    const ptzSpeed = Math.min(8, Math.max(1, Math.round(speed || 5)));
+    const port = camera.onvifPort || 80;
+
+    // Create Dahua CGI start and stop endpoint URLs
+    // Incorporating user credentials directly into URL authority and setting Manual Basic Auth Header for full compatibility
+    const credentials = `${encodeURIComponent(username)}:${encodeURIComponent(password)}`;
+    const baseUrl = `http://${credentials}@${ip}:${port}/cgi-bin/ptz.cgi`;
+    const startUrl = `${baseUrl}?action=start&channel=0&code=${ptzCode}&arg1=0&arg2=${ptzSpeed}&arg3=0`;
+    const stopUrl = `${baseUrl}?action=stop&channel=0&code=${ptzCode}&arg1=0&arg2=0&arg3=0`;
+
+    const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+
+    console.log(`[PHYSICAL PTZ] Sending CGI Command: camera="${camera.name}" IP="${ip}" action=${action.toUpperCase()} code=${ptzCode} speed=${ptzSpeed}`);
+
+    try {
+      // 1. Send PTZ START command
+      const startRes = await fetch(startUrl, {
+        method: "GET",
+        headers: { "Authorization": authHeader },
+        signal: AbortSignal.timeout(3000)
+      });
+      console.log(`[PHYSICAL PTZ] START Request sent to ${ip}. HTTP status code = ${startRes.status}`);
+
+      // 2. Wait exactly 450ms before sending the STOP command to form a tidy movement burst
+      await new Promise((resolve) => setTimeout(resolve, 450));
+
+      // 3. Send PTZ STOP command
+      const stopRes = await fetch(stopUrl, {
+        method: "GET",
+        headers: { "Authorization": authHeader },
+        signal: AbortSignal.timeout(3000)
+      });
+      console.log(`[PHYSICAL PTZ] STOP Request sent to ${ip}. HTTP status code = ${stopRes.status}`);
+    } catch (err: any) {
+      console.error(`[PHYSICAL PTZ] Failed to execute physical command on camera at ${ip}: ${err.message}`);
+    }
+  }
+
   // Execute PTZ Action (Move camera axis / preset)
   app.post("/api/cameras/:id/ptz", async (req, res) => {
     const { id } = req.params;
@@ -960,6 +1029,9 @@ async function startServer() {
         }
 
         await mysqlPool.query("UPDATE cameras SET ptzStatus = ? WHERE id = ?", [JSON.stringify(ptzStatus), id]);
+
+        // Send real command asynchronously to of the physical camera
+        sendPhysicalPtzCommand(camera, action, ptzSpeed);
 
         const logEntry = `[ONVIF Command] PTZ Call: action=${action}, speed=${ptzSpeed}, PAN=${ptzStatus.pan}, TILT=${ptzStatus.tilt}, ZOOM=${ptzStatus.zoom}x`;
         console.log(logEntry);
@@ -1036,6 +1108,9 @@ async function startServer() {
 
       db.cameras[idx] = camera;
       saveDb(db);
+
+      // Send real command asynchronously to of the physical camera
+      sendPhysicalPtzCommand(camera, action, ptzSpeed);
 
       const logEntry = `[ONVIF Command] PTZ Call: action=${action}, speed=${ptzSpeed}, PAN=${camera.ptzStatus.pan}, TILT=${camera.ptzStatus.tilt}, ZOOM=${camera.ptzStatus.zoom}x`;
       console.log(logEntry);
