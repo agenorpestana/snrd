@@ -96,6 +96,18 @@ export default function CameraPlayer({
   const tiltOffset = camera.ptzStatus ? camera.ptzStatus.tilt : 0;
   const zoomScale = camera.ptzStatus ? camera.ptzStatus.zoom : 1.0;
 
+  // Compute a base zoomed scale of at least 1.35x. This provides extra margins
+  // for the image to slide inside the container when panned or tilted, preventing black bands entirely!
+  const effectiveZoom = Math.max(1.35, zoomScale);
+
+  // Bounds-preserving mathematical maximum translations relative to the zoomed frame:
+  // (effectiveZoom - 1) / (2 * effectiveZoom) is the exact mathematically derived percentage-based bound to keep edges fully inside!
+  const maxTranslateX = ((effectiveZoom - 1) / (2 * effectiveZoom)) * 100;
+  const maxTranslateY = ((effectiveZoom - 1) / (2 * effectiveZoom)) * 100;
+
+  const translateX = (panOffset / 180) * maxTranslateX;
+  const translateY = (-tiltOffset / 90) * maxTranslateY;
+
   // Render a beautiful stylized canvas-backdrop representing airport runway or coastal view depending on the camera name
   const nameLower = camera.name.toLowerCase();
   const descLower = (camera.description || "").toLowerCase();
@@ -144,7 +156,7 @@ export default function CameraPlayer({
         <div 
           className="absolute inset-0 w-full h-full transition-transform duration-500 ease-out origin-center"
           style={{
-            transform: `scale(${zoomScale}) translate(${panOffset * 0.3}px, ${-tiltOffset * 0.3}px)`
+            transform: `scale(${effectiveZoom}) translate(${translateX}%, ${translateY}%)`
           }}
         >
           {simulatedMode ? (
@@ -228,39 +240,7 @@ export default function CameraPlayer({
           )}
         </div>
 
-        {/* 2. ON-SCREEN DISPLAY (OSD) SURVEILLANCE OVERLAYS */}
-        
-        {/* Top HUD transparent bar */}
-        <div className="absolute top-3 inset-x-3 bg-black/60 backdrop-blur-sm px-3.5 py-1.5 rounded-md border border-white/5 flex items-center justify-between pointer-events-none select-none z-10 font-mono text-[10px] text-white">
-          <span className="font-semibold">SNRD {camera.modelName || "VIPW-2000-DOME"} ({camera.onvifIp || "10.65.0.1"})</span>
-          <span className="font-mono tracking-wider">{currentTime}</span>
-        </div>
-
-        {/* Dynamic RED REC Indicator */}
-        <div className="absolute top-11.5 left-4.5 flex items-center space-x-1.5 select-none pointer-events-none z-10 animate-pulse">
-          <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
-          <span className="text-[8.5px] font-bold text-red-500 font-mono tracking-wider uppercase filter drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
-            REC 1080P
-          </span>
-        </div>
-
-        {/* HUD viewfinder corner brackets */}
-        <div className="absolute inset-3 border border-white/5 rounded pointer-events-none select-none z-10">
-          <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-white/40"></div>
-          <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-white/40"></div>
-          <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-white/40"></div>
-          <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-white/40"></div>
-        </div>
-
-        {/* Bottom left HUD watermark */}
-        <div className="absolute bottom-3 left-3 bg-black/60 px-2 py-0.5 rounded border border-white/5 text-[9px] font-mono text-slate-300 z-10 pointer-events-none">
-          {camera.modelName || "Modelo Customizado"}
-        </div>
-
-        {/* Bottom right HUD PTZ coordinates state */}
-        <div className="absolute bottom-3 right-3 bg-black/60 px-2 py-0.5 rounded border border-white/5 text-[9px] font-mono text-slate-300 z-10 pointer-events-none">
-          P: {panOffset}° T: {tiltOffset}° Z: {zoomScale}x
-        </div>
+        {/* On-screen overlays removed for uncluttered display */}
       </div>
 
       {/* 2. LIVE WEATHER INTEGRITY INDICATOR & META CARD */}
@@ -272,10 +252,6 @@ export default function CameraPlayer({
             <h3 className="font-extrabold text-[15px] text-slate-100 group-hover:text-[#00A767] transition-all tracking-wide font-sans">
               {camera.name}
             </h3>
-            {/* Monospace masked url path matching card screenshot */}
-            <p className="text-[10px] text-teal-400 font-mono tracking-normal leading-relaxed break-all mt-1">
-              {camera.streamUrl.replace(/rtsp:\/\/([^:]+):([^@]+)@/, "rtsp://***:***@") || `rtsp://***:***@${camera.onvifIp || "10.65.0.1"}:554/cam/realmonitor?channel=1&subtype=0`}
-            </p>
           </div>
 
           {/* Climate card widgets */}
