@@ -615,8 +615,22 @@ async function startServer() {
 
     const ffmpeg = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "ignore"] });
     let buffer = Buffer.alloc(0);
+    let hasSentData = false;
+
+    // Timeout safety: if ffmpeg does not output any video frames within 5 seconds, close stream
+    const streamTimeout = setTimeout(() => {
+      if (!hasSentData) {
+        console.warn(`[RTSP Stream] Timeout de conexão (5s) da câmera ${id}. Sem quadros recebidos.`);
+        ffmpeg.kill("SIGKILL");
+        res.end();
+      }
+    }, 5000);
 
     ffmpeg.stdout.on("data", (chunk) => {
+      if (!hasSentData) {
+        hasSentData = true;
+        clearTimeout(streamTimeout);
+      }
       buffer = Buffer.concat([buffer, chunk]);
       let start = 0;
 
@@ -653,15 +667,18 @@ async function startServer() {
 
     ffmpeg.on("error", (err) => {
       console.error(`[RTSP Stream] Erro iniciando ffmpeg para a câmera ${id}:`, err.message);
+      clearTimeout(streamTimeout);
     });
 
     ffmpeg.on("close", (code) => {
       console.log(`[RTSP Stream] Transcodificador da câmera ${id} finalizado com código ${code}`);
+      clearTimeout(streamTimeout);
       res.end();
     });
 
     req.on("close", () => {
       console.log(`[RTSP Stream] Conexão encerrada pelo cliente, encerrando processo ffmpeg para a câmera ${id}`);
+      clearTimeout(streamTimeout);
       ffmpeg.kill("SIGKILL");
     });
   });

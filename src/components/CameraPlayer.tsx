@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Camera, WeatherInfo } from "../types";
-import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw } from "lucide-react";
+import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw, Camera as CameraIcon } from "lucide-react";
 
 interface CameraPlayerProps {
   camera: Camera;
@@ -237,90 +237,66 @@ export default function CameraPlayer({
         {/* 2. ON-SCREEN DISPLAY (OSD) SURVEILLANCE OVERLAYS */}
         
         {/* Top left metadata (camera name) */}
-        <div className="absolute top-3 left-3 bg-slate-950/70 py-1 px-2.5 rounded-md backdrop-blur-sm border border-white/5 select-none pointer-events-none">
-          <p className="font-mono text-white text-[11px] font-semibold tracking-wide flex items-center gap-1.5 uppercase">
-            <span className="h-2 w-2 rounded-full bg-[#00A767] animate-ping"></span>
-            {camera.name}
+        <div className="absolute top-3 left-3 bg-[#000000]/65 py-1 px-2.5 rounded-full backdrop-blur-sm border border-white/5 select-none pointer-events-none flex items-center gap-1.5 z-10">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#00A767] animate-pulse"></span>
+          <p className="font-sans text-white text-[10px] font-bold tracking-wider uppercase">
+            {camera.name} - LIVE
           </p>
         </div>
 
         {/* Top right timestamp & dynamic OSD clock */}
-        <div className="absolute top-3 right-3 bg-slate-950/70 py-1 px-2.5 rounded-md backdrop-blur-sm border border-white/5 select-none pointer-events-none">
-          <p className="font-mono text-[11px] text-white/95 font-medium tracking-widest uppercase bg-transparent">
+        <div className="absolute top-3 right-3 select-none pointer-events-none z-10">
+          <p className="font-mono text-[10.5px] text-white font-normal tracking-wider filter drop-shadow-[0_1.5px_1px_rgba(0,0,0,0.9)]">
             {currentTime}
           </p>
         </div>
 
-        {/* Bottom left device model label */}
-        <div className="absolute bottom-3 left-3 select-none pointer-events-none">
-          <p className="font-mono text-xs text-white bg-slate-950/60 px-2 py-0.5 rounded backdrop-blur-sm font-semibold tracking-wider">
-            {camera.modelName || "VIPW Intelbras"}
-          </p>
+        {/* Dynamic REC overlay */}
+        <div className="absolute top-9 right-3 bg-red-650 bg-red-600 px-1.5 py-0.5 rounded text-[9px] text-white font-bold tracking-wide animate-pulse select-none pointer-events-none shadow z-10">
+          REC
         </div>
 
-        {/* Stream coordinates telemetry in lower quadrant */}
-        {camera.isPtzCompatible && camera.ptzStatus && (
-          <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm py-1 px-2 rounded border border-white/5 font-mono text-[8.5px] text-slate-300 flex space-x-2 pointer-events-none">
-            <span>P: {camera.ptzStatus.pan}°</span>
-            <span>T: {camera.ptzStatus.tilt}°</span>
-            <span>Z: {camera.ptzStatus.zoom}x</span>
-          </div>
-        )}
-
-        {/* Scan lines / Camera scan HUD */}
-        <div className="absolute inset-0 bg-scanlines pointer-events-none opacity-20"></div>
-
-        {/* Corner framing indicators */}
-        <div className="absolute top-4 left-4 w-3 h-3 border-t-2 border-l-2 border-white/35 pointer-events-none"></div>
-        <div className="absolute top-4 right-4 w-3 h-3 border-t-2 border-r-2 border-white/35 pointer-events-none"></div>
-        <div className="absolute bottom-4 left-4 w-3 h-3 border-b-2 border-l-2 border-white/35 pointer-events-none"></div>
-        <div className="absolute bottom-4 right-4 w-3 h-3 border-b-2 border-r-2 border-white/35 pointer-events-none"></div>
-
-        {/* REC overlay */}
-        <div className="absolute top-12 left-3 flex items-center space-x-1 font-mono text-[9px] text-red-500 font-bold bg-slate-950/50 px-1.5 py-0.5 rounded pointer-events-none select-none">
-          <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse"></span>
-          <span>REC 1080P</span>
+        {/* Bottom left OSD camera location watermark */}
+        <div className="absolute bottom-3 left-3 select-none pointer-events-none z-10">
+          <p className="font-mono text-[9px] text-white/75 font-normal tracking-wide filter drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
+            {camera.city} SNRD
+          </p>
         </div>
       </div>
 
       {/* 2. LIVE WEATHER INTEGRITY INDICATOR & META CARD */}
-      <div className="p-4 flex flex-col flex-grow bg-slate-950 text-slate-100 border-t border-slate-900 select-none">
+      <div className="p-3.5 flex flex-col bg-[#0B0F19] text-slate-100 border-t border-slate-900/60 select-none">
         
-        {/* Location & Real-Time Weather segment */}
-        <div className="flex items-start justify-between border-b border-slate-900 pb-3 mb-3">
-          <div>
-            <h3 className="font-semibold text-sm text-slate-100 group-hover:text-[#00A767] transition-all">
-              {camera.city}
-            </h3>
-            <p className="text-xs text-slate-400 line-clamp-1 mt-0.5 font-mono text-[11px]">
-              {camera.streamUrl.replace(/:\/\/.*@/, "://***:***@")}
-            </p>
+        {/* Location, Camera Name icon layout */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 bg-[#00A767]/10 text-[#00A767] border border-[#00A767]/15 rounded-lg flex items-center justify-center">
+              <CameraIcon className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-slate-100 group-hover:text-[#00A767] transition-all tracking-wide">
+                {camera.name}
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                {camera.city}
+              </p>
+            </div>
           </div>
 
-          {/* Core Gemini weather widget integrated */}
-          <div className="flex items-center text-right bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-800/40 relative min-w-[120px] justify-end group">
+          {/* Real-Time weather forecast segment */}
+          <div className="flex items-center text-right bg-slate-900/40 px-2.5 py-1.5 rounded-lg border border-slate-800/30 min-w-[110px] justify-end">
             {loadingWeather ? (
-              <div className="flex items-center space-x-2 text-slate-400 text-xs">
+              <div className="flex items-center space-x-1.5 text-slate-400 text-xs">
                 <RefreshCw className="h-3 w-3 animate-spin text-[#00A767]" />
-                <span className="text-[10px] font-mono">Buscando Clima...</span>
+                <span className="text-[9px] font-mono">Buscando...</span>
               </div>
             ) : weatherError ? (
-              <span className="text-[10px] text-red-400 font-mono flex items-center gap-1">
-                {weatherError}
-                <button 
-                  onClick={(e) => { e.stopPropagation(); fetchWeather(); }} 
-                  className="hover:text-white"
-                  title="Tentar Novamente"
-                >
-                  <RefreshCw className="h-2.5 w-2.5" />
-                </button>
-              </span>
+              <span className="text-[10px] text-slate-500 font-mono">Clima N/D</span>
             ) : weather ? (
               <div className="flex items-center space-x-2">
-                <div className="text-left">
-                  <p className="text-xs font-bold text-white leading-none font-mono flex items-center gap-0.5">
+                <div className="text-right">
+                  <p className="text-xs font-bold text-white leading-none font-mono">
                     {weather.temp}°C
-                    <Thermometer className="h-3 w-3 text-emerald-400" />
                   </p>
                   <p className="text-[9px] text-[#00A767] whitespace-nowrap leading-tight mt-0.5 max-w-[80px] overflow-hidden text-ellipsis font-medium">
                     {weather.condition}
@@ -329,48 +305,29 @@ export default function CameraPlayer({
                 {getWeatherIcon(weather.condition)}
               </div>
             ) : (
-              <span className="text-[10px] text-slate-400">N/A</span>
+              <span className="text-[10px] text-slate-500">N/A</span>
             )}
           </div>
         </div>
 
-        {/* Description panel */}
-        <p className="text-xs text-slate-350 leading-relaxed font-sans line-clamp-2">
-          {camera.description}
-        </p>
-
-        {/* ONVIF Details footer panel & Device Info */}
-        <div className="mt-3 pt-3 border-t border-slate-900 flex items-center justify-between text-[11px] text-slate-400 font-mono">
-          <div className="flex items-center space-x-1.5">
-            <span className={`h-1.5 w-1.5 rounded-full ${camera.isPtzCompatible ? "bg-emerald-400" : "bg-slate-500"}`}></span>
-            <span>{camera.isPtzCompatible ? "ONVIF PTZ ATIVO" : "ONVIF ESTÁTICO"}</span>
-          </div>
-          
-          <div className="flex items-center space-x-1">
-            <span className="text-[10px] text-slate-500">IP: {camera.onvifIp || "N/A"}</span>
-          </div>
-        </div>
-
-        {/* Admin management buttons */}
+        {/* Small Admin action utilities when enabled */}
         {isAdmin && (onEditClick || onDeleteClick) && (
-          <div className="mt-4 pt-3 border-t border-slate-900 flex items-center justify-end space-x-2">
+          <div className="mt-3 pt-3 border-t border-slate-900 flex items-center justify-end space-x-2">
             <button
-              id={`cam-edit-${camera.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (onEditClick) onEditClick(camera);
               }}
-              className="text-xs bg-slate-900 hover:bg-slate-850 hover:text-white border border-slate-800 text-slate-300 py-1.5 px-3 rounded-lg transition-colors font-medium cursor-pointer"
+              className="text-[10px] bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-350 py-1 px-2.5 rounded transition-colors font-medium cursor-pointer"
             >
               Editar Configurações
             </button>
             <button
-              id={`cam-delete-${camera.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (onDeleteClick) onDeleteClick(camera);
               }}
-              className="text-xs bg-red-950/40 hover:bg-red-900 border border-red-900/30 text-red-200 py-1.5 px-3 rounded-lg transition-colors font-medium cursor-pointer"
+              className="text-[10px] bg-red-950/40 hover:bg-red-950 border border-red-900/30 text-red-300 py-1 px-2.5 rounded transition-colors font-medium cursor-pointer"
             >
               Excluir
             </button>
