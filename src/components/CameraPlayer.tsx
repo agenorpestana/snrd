@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Camera, WeatherInfo } from "../types";
-import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Wind, Droplets, Info, Database, Eye, ShieldCheck, RefreshCw } from "lucide-react";
+import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw } from "lucide-react";
 
 interface CameraPlayerProps {
   camera: Camera;
@@ -24,6 +24,7 @@ export default function CameraPlayer({
   const [weatherError, setWeatherError] = useState("");
   const [currentTime, setCurrentTime] = useState("");
   const [streamOffline, setStreamOffline] = useState(false);
+  const [simulatedMode, setSimulatedMode] = useState(false);
 
   // Dynamic ticking clock for surveillance overlay
   useEffect(() => {
@@ -66,6 +67,12 @@ export default function CameraPlayer({
     fetchWeather();
   }, [camera.city]);
 
+  // Reset offline state whenever stream location changes to always evaluate newly input streams
+  useEffect(() => {
+    setStreamOffline(false);
+    setSimulatedMode(false);
+  }, [camera.streamUrl]);
+
   // Determine weather icon representation
   const getWeatherIcon = (condition: string) => {
     const cond = (condition || "").toLowerCase();
@@ -99,6 +106,27 @@ export default function CameraPlayer({
   const isPatio = nameLower.includes("pátio") || nameLower.includes("patio") || nameLower.includes("garagem") || nameLower.includes("estacionamento") || nameLower.includes("yard") || nameLower.includes("portaria") || descLower.includes("pátio") || descLower.includes("estacionamento");
   const isEscritorio = nameLower.includes("escritório") || nameLower.includes("escritorio") || nameLower.includes("sala") || nameLower.includes("servidor") || nameLower.includes("interno") || nameLower.includes("corredor") || nameLower.includes("datacenter") || nameLower.includes("hall") || nameLower.includes("recepção") || descLower.includes("escritório") || descLower.includes("pátio interno") || descLower.includes("interno") || indexMatch.includes("cam-3");
 
+  // Check stream compatibility in general
+  const url = (camera.streamUrl || "").trim();
+  const isRtsp = url.toLowerCase().startsWith("rtsp://") || !url;
+  
+  // Try to determine if we should render an image element (like local MJPEG server frames)
+  const useMjpgPlayer = url.includes(".mjpg") || url.includes("/mjpg") || url.includes("snapshot") || url.includes("cgi-bin") || url.includes(".jpg") || url.includes(".jpeg") || url.includes(".png");
+
+  // Decide which video mock source to use for RTSP/unplayable streams to show a REAL moving video loop
+  let mockVideoSrc = "";
+  if (isPista) {
+    mockVideoSrc = "https://assets.mixkit.co/videos/preview/mixkit-airport-terminal-with-people-and-airplanes-43184-large.mp4";
+  } else if (isCopa) {
+    mockVideoSrc = "https://assets.mixkit.co/videos/preview/mixkit-waves-breaking-in-the-ocean-1527-large.mp4";
+  } else if (isPatio) {
+    mockVideoSrc = "https://assets.mixkit.co/videos/preview/mixkit-security-camera-of-a-parking-lot-43552-large.mp4";
+  } else if (isEscritorio) {
+    mockVideoSrc = "https://assets.mixkit.co/videos/preview/mixkit-underground-subway-station-with-people-42998-large.mp4";
+  } else {
+    mockVideoSrc = "https://assets.mixkit.co/videos/preview/mixkit-camera-monitoring-highway-traffic-43405-large.mp4";
+  }
+
   return (
     <div
       id={`camera-card-${camera.id}`}
@@ -112,212 +140,96 @@ export default function CameraPlayer({
       {/* 1. SURVEILLANCE VIEWPORT */}
       <div className="relative aspect-video bg-slate-950 overflow-hidden select-none">
         
-        {/* Real video background mock (animated vector rendering using pure HTML & CSS) */}
+        {/* Real video container with pan tilt zoom transitions */}
         <div 
           className="absolute inset-0 w-full h-full transition-transform duration-500 ease-out origin-center"
           style={{
             transform: `scale(${zoomScale}) translate(${panOffset * 0.3}px, ${-tiltOffset * 0.3}px)`
           }}
         >
-          {isPista ? (
-            /* Visual airport runway mockup matching the Intelbras user prompt image perfectly! */
-            <div className="w-full h-full relative bg-gradient-to-b from-sky-400 via-sky-300 to-emerald-800 overflow-hidden">
-              {/* Skylines/Decolations */}
-              <div className="absolute top-[35%] left-0 right-0 h-1 bg-sky-200"></div>
-              <div className="absolute top-0 left-0 right-0 h-[40%] bg-gradient-to-t from-transparent to-sky-500/30"></div>
-              {/* Cloulds */}
-              <div className="absolute top-10 left-[15%] w-32 h-10 bg-white/60 rounded-full blur-[6px]"></div>
-              <div className="absolute top-20 right-[25%] w-44 h-12 bg-white/50 rounded-full blur-[8px]"></div>
-              
-              {/* Sun Flare */}
-              <div className="absolute top-8 left-[30%] w-60 h-60 bg-gradient-to-r from-yellow-100/30 to-orange-200/5 blur-3xl rounded-full"></div>
-              
-              {/* Forest / Mountains Backdrop */}
-              <div className="absolute bottom-[40%] left-0 right-0 h-16 bg-[#005c31] clip-mountain flex items-end">
-                <div className="w-full h-4 bg-[#0a522f] opacity-80 blur-sm"></div>
+          {simulatedMode ? (
+            /* Standard IP Camera RTSP protocol warning overlay & real looping video mock */
+            <div className="w-full h-full relative">
+              <video
+                src={mockVideoSrc}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-cover animate-fade-in"
+                style={{ filter: "contrast(1.05) brightness(0.95)" }}
+              />
+              {/* Absolute overlay warning the user about direct RTSP lack of support in standard secure browsers */}
+              <div className="absolute inset-x-0 bottom-10 flex justify-center px-4 select-none pointer-events-auto z-10 animate-fade-in duration-300">
+                <div className="bg-slate-950/90 hover:bg-slate-950/95 backdrop-blur-md border border-amber-500/30 rounded-lg p-3 max-w-sm text-center shadow-lg transition-all">
+                  <p className="text-[10px] text-amber-400 font-semibold flex items-center justify-center gap-1.5 font-sans">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    Modo Simulado Ativado (Amostra Local)
+                  </p>
+                  <p className="text-[9.5px] text-slate-350 leading-normal mt-1 text-left font-sans col-span-3">
+                    As imagens em tempo real serão carregadas utilizando os dados reais através da transcodificação central.
+                  </p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSimulatedMode(false);
+                      setStreamOffline(false);
+                    }}
+                    className="mt-2 w-full bg-emerald-600 hover:bg-emerald-505 hover:bg-emerald-500 text-white font-bold text-[10.5px] py-1.5 rounded transition-colors cursor-pointer"
+                  >
+                    Visualizar Imagem em Tempo Real ↑
+                  </button>
+                </div>
               </div>
-
-              {/* Asphalt Airport Runway Lane */}
-              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[75%] h-[42%] bg-[#2e2e2e] py-1">
-                {/* Yellow center line */}
-                <div className="h-full w-2 mx-auto border-t-[8px] bg-yellow-400/90 border-dashed border-yellow-500/20"></div>
-                {/* White side lines */}
-                <div className="absolute left-4 top-0 bottom-0 w-1 bg-white/65"></div>
-                <div className="absolute right-4 top-0 bottom-0 w-1 bg-white/65"></div>
-              </div>
-
-              {/* Hangar elements */}
-              <div className="absolute bottom-0 left-2 w-14 h-16 bg-white border-r-4 border-slate-300 origin-bottom flex items-start justify-center text-[8px] text-slate-400 pt-2 shadow-lg">
-                Hangar 1
-              </div>
-
-              {/* Grass details */}
-              <div className="absolute bottom-0 left-0 w-[12.5%] h-[40%] bg-gradient-to-r from-emerald-800 to-emerald-700"></div>
-              <div className="absolute bottom-0 right-0 w-[12.5%] h-[40%] bg-gradient-to-l from-emerald-800 to-emerald-700"></div>
-
-              {/* Animated Airplane landing shadow */}
-              <div className="absolute top-[42%] left-[48%] bg-slate-900/40 w-10 h-2 rounded-full blur-sm opacity-60 animate-pulse"></div>
-            </div>
-          ) : isCopa ? (
-            /* Visual Copacabana view mockup */
-            <div className="w-full h-full relative bg-gradient-to-b from-sky-300 via-sky-200 to-yellow-100 overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-[45%] bg-gradient-to-b from-blue-400 to-sky-300"></div>
-              {/* Sea Waves */}
-              <div className="absolute bottom-[10%] left-0 right-0 h-[35%] bg-gradient-to-b from-teal-500 to-cyan-600">
-                <div className="absolute inset-0 bg-white/10 opacity-40 animate-pulse flex items-center justify-center font-bold text-teal-800 text-xs">~~ COPACABANA ~~</div>
-              </div>
-              {/* Sand Beach */}
-              <div className="absolute bottom-0 left-0 right-0 h-[18%] bg-[#e3cfac]"></div>
-              {/* Sun */}
-              <div className="absolute top-12 right-20 w-16 h-16 bg-amber-200 rounded-full blur-md"></div>
-            </div>
-          ) : isPatio ? (
-            /* Visual Operations Yard / Patio / Parking Lot mockup */
-            <div className="w-full h-full relative bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 overflow-hidden">
-              {/* Starry/Surveillance Sky details */}
-              <div className="absolute top-4 left-10 w-1.5 h-1.5 bg-yellow-100 rounded-full opacity-60"></div>
-              <div className="absolute top-10 right-16 w-1 h-1 bg-white rounded-full opacity-40"></div>
-              
-              {/* Horizon & Mountains */}
-              <div className="absolute bottom-[40%] left-0 right-0 h-10 bg-slate-950 opacity-90 clip-mountain"></div>
-              
-              {/* Yard Ground */}
-              <div className="absolute bottom-0 left-0 right-0 h-[40%] bg-gradient-to-b from-slate-800 to-slate-900 border-t border-slate-700/50">
-                {/* Yellow parking markers */}
-                <div className="absolute left-[20%] top-4 bottom-0 w-1.5 bg-yellow-500/20 origin-bottom transform skew-x-12"></div>
-                <div className="absolute left-[50%] top-4 bottom-0 w-1.5 bg-yellow-500/20"></div>
-                <div className="absolute right-[20%] top-4 bottom-0 w-1.5 bg-yellow-500/20 origin-bottom transform -skew-x-12"></div>
-              </div>
-
-              {/* Stacked Cargo Containers */}
-              <div className="absolute bottom-[35%] left-4 w-12 h-14 bg-gradient-to-b from-blue-600 to-blue-700 rounded border-t border-blue-400 flex flex-col justify-between p-1 shadow-md">
-                <div className="h-1 border-b border-blue-500/35"></div>
-                <div className="h-1 border-b border-blue-500/35"></div>
-                <span className="text-[7px] font-mono text-white/50 text-center uppercase tracking-wider">CARGO</span>
-              </div>
-              <div className="absolute bottom-[35%] left-18 w-10 h-10 bg-gradient-to-b from-orange-600 to-orange-705 rounded border-t border-orange-400 flex flex-col justify-between p-1 shadow-md">
-                <div className="h-1 border-b border-orange-400/35"></div>
-                <span className="text-[7px] font-mono text-white/50 text-center uppercase tracking-wider">SNRD</span>
-              </div>
-
-              {/* Industrial Lamp / Spotlight projection */}
-              <div className="absolute top-0 right-[25%] w-0 h-0 border-l-[45px] border-l-transparent border-r-[45px] border-r-transparent border-b-[120px] border-b-yellow-400/10 pointer-events-none blur-sm animate-pulse"></div>
-              <div className="absolute top-0 right-[25%] w-2 h-4 bg-slate-700 rounded-b"></div>
-
-              {/* Stylized Security Bar Gate */}
-              <div className="absolute bottom-6 right-[15%] w-24 h-1.5 bg-red-600 border border-white rounded shadow-md"></div>
-              <div className="absolute bottom-2 right-[22%] w-3 h-5 bg-slate-600 rounded"></div>
-
-              {/* Animated camera lens sweep reflection (subtle light bars passing by) */}
-              <div className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-transparent via-emerald-500/10 to-transparent"></div>
-            </div>
-          ) : isEscritorio ? (
-            /* Visual High-Tech Server Room / Indoor corridor mockup */
-            <div className="w-full h-full relative bg-slate-950 overflow-hidden pb-10">
-              {/* Prospective Corridor lines */}
-              <svg className="absolute inset-0 w-full h-full opacity-25" xmlns="http://www.w3.org/2000/svg">
-                <line x1="0" y1="0" x2="135" y2="70" stroke="#10b981" strokeWidth="0.5" strokeOpacity="0.4" />
-                <line x1="100%" y1="0" x2="185" y2="70" stroke="#10b981" strokeWidth="0.5" strokeOpacity="0.4" />
-                <line x1="0" y1="100%" x2="135" y2="110" stroke="#10b981" strokeWidth="0.5" strokeOpacity="0.4" />
-                <line x1="100%" y1="100%" x2="185" y2="110" stroke="#10b981" strokeWidth="0.5" strokeOpacity="0.4" />
-              </svg>
-
-              {/* Far end door/wall */}
-              <div className="absolute top-[40%] left-[42%] w-[16%] h-[15%] bg-slate-900 border border-slate-800 flex items-center justify-center">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]"></div>
-              </div>
-
-              {/* Left Server Rack Cabinet with Blinking LEDs */}
-              <div className="absolute top-0 bottom-0 left-0 w-[30%] bg-gradient-to-r from-slate-950 to-slate-900 border-r border-slate-800/80 flex flex-col justify-around py-2 px-1">
-                {Array.from({ length: 4 }).map((_, rIdx) => (
-                  <div key={rIdx} className="bg-slate-950 border border-slate-900 rounded p-1 flex flex-col space-y-1">
-                    <div className="h-0.5 bg-slate-800 rounded"></div>
-                    <div className="flex justify-between items-center px-0.5 scale-90">
-                      {/* Servers rack status blinking LEDs */}
-                      <span className={`w-1.5 h-1.5 rounded-full ${rIdx % 2 === 0 ? "bg-emerald-500 animate-pulse" : "bg-cyan-500 animate-pulse"}`}></span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span className={`w-1.5 h-1.5 rounded-full ${rIdx % 3 === 0 ? "bg-amber-400 animate-bounce" : "bg-emerald-500"}`}></span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Right Office Partition or Windows Cabinet */}
-              <div className="absolute top-0 bottom-0 right-0 w-[30%] bg-gradient-to-l from-slate-950 to-slate-900 border-l border-slate-800/80 flex flex-col justify-around py-3 px-1.5">
-                {Array.from({ length: 3 }).map((_, wIdx) => (
-                  <div key={wIdx} className="h-[22%] bg-blue-950/15 border border-blue-900/25 rounded flex items-center justify-center relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-blue-500/5 to-transparent"></div>
-                    <span className="text-[7px] font-mono text-slate-500 scale-90">SYS ACTIVE</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Floor highlight reflection */}
-              <div className="absolute bottom-0 left-[30%] right-[30%] h-4 bg-gradient-to-t from-emerald-500/5 to-transparent blur-sm"></div>
             </div>
           ) : (
-            /* Visual High-Fidelity Urban City Skyline Fallback Mockup */
-            /* This mimics a real-world active street/outdoor camera feed! */
-            <div className="w-full h-full relative bg-gradient-to-b from-[#050917] via-[#091024] to-[#121c38] overflow-hidden">
-              {/* Starry Night Sky */}
-              <div className="absolute top-4 left-6 w-0.5 h-0.5 bg-white rounded-full opacity-60"></div>
-              <div className="absolute top-10 right-12 w-0.5 h-0.5 bg-white rounded-full opacity-70"></div>
-              <div className="absolute top-6 left-[40%] w-1 h-1 bg-yellow-105 rounded-full opacity-35 animate-pulse"></div>
+            /* Real-time streaming from Express transcode channel (RTSP Bypass) */
+            <div className="w-full h-full relative bg-slate-950 flex items-center justify-center">
+              <img
+                src={`/api/cameras/${camera.id}/stream`}
+                alt={camera.name}
+                className="w-full h-full object-cover animate-fade-in"
+                referrerPolicy="no-referrer"
+                onError={() => {
+                  setStreamOffline(true);
+                }}
+              />
               
-              {/* City Skyline Silhouette with Window Lights */}
-              <div className="absolute bottom-[30%] inset-x-0 h-24 flex items-end justify-between px-2 opacity-95">
-                <div className="w-12 h-14 bg-slate-950 border-t border-l border-slate-800 rounded-t relative">
-                  <div className="grid grid-cols-2 gap-0.5 p-1 opacity-70">
-                    <span className="w-1 h-1 bg-yellow-300 rounded-sm"></span>
-                    <span className="w-1 h-1 bg-slate-800 rounded-sm"></span>
-                    <span className="w-1 h-1 bg-yellow-200 rounded-sm animate-pulse"></span>
-                    <span className="w-1 h-1 bg-yellow-300 rounded-sm"></span>
+              {streamOffline && (
+                <div className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-4 text-center z-10 select-text">
+                  <div className="h-8 w-8 rounded-full bg-red-950 border border-red-500/40 flex items-center justify-center mb-2 animate-pulse select-none">
+                    <span className="h-2.5 w-2.5 bg-red-500 rounded-full"></span>
+                  </div>
+                  <p className="text-xs font-semibold text-red-500 font-mono tracking-wide uppercase">Câmera Offline (Rede Local ou Inacessível)</p>
+                  <p className="text-[10px] text-slate-300 mt-1 max-w-[320px]">
+                    Não foi possível conectar ao endereço <code className="bg-slate-900 px-1 py-0.5 rounded font-mono text-[9px] text-slate-100">{camera.streamUrl}</code> via transcodificador do servidor.
+                  </p>
+                  <p className="text-[9.5px] text-slate-450 mt-1 max-w-[280px]">
+                    Certifique-se de que o DVR/Câmera está ativo e com a porta RTSP liberada para acesso.
+                  </p>
+                  <div className="flex gap-2.5 mt-4 select-none">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStreamOffline(false);
+                      }}
+                      className="bg-slate-900 hover:bg-slate-805 hover:bg-slate-800 border border-slate-700 text-white font-bold text-[10px] py-1.5 px-3 rounded-lg transition-all cursor-pointer shadow-sm"
+                    >
+                      Tentar Reconectar Feed Real
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSimulatedMode(true);
+                        setStreamOffline(false);
+                      }}
+                      className="bg-[#00A767] hover:bg-[#009055] text-white font-bold text-[10px] py-1.5 px-3 rounded-lg transition-all cursor-pointer shadow-sm"
+                    >
+                      Simular Sinal (Vídeo Local)
+                    </button>
                   </div>
                 </div>
-                <div className="w-16 h-20 bg-slate-900 border-t border-x border-slate-850 rounded-t relative">
-                  <div className="grid grid-cols-3 gap-0.5 p-1 opacity-80">
-                    <span className="w-1 h-1 bg-slate-800 rounded-sm"></span>
-                    <span className="w-1 h-1 bg-yellow-300 rounded-sm"></span>
-                    <span className="w-1 h-1 bg-yellow-400 rounded-sm animate-pulse"></span>
-                    <span className="w-1 h-1 bg-slate-800 rounded-sm"></span>
-                    <span className="w-1 h-1 bg-yellow-300 rounded-sm"></span>
-                    <span className="w-1 h-1 bg-slate-800 rounded-sm"></span>
-                  </div>
-                </div>
-                <div className="w-10 h-16 bg-slate-950 border-t border-r border-slate-800 rounded-t relative">
-                  <div className="grid grid-cols-2 gap-1 p-1 opacity-60">
-                    <span className="w-1 h-1 bg-yellow-200 rounded-sm"></span>
-                    <span className="w-1 h-1 bg-yellow-300 rounded-sm"></span>
-                  </div>
-                </div>
-                <div className="w-12 h-12 bg-slate-900 border-t border-slate-850 rounded-t"></div>
-              </div>
-
-              {/* Express Highway in Perspective */}
-              <div className="absolute bottom-0 left-0 right-0 h-[32%] bg-[#1c1d24] border-t border-slate-700 flex flex-col justify-between py-1 shadow-inner relative overflow-hidden">
-                {/* Lane Separator Dash */}
-                <div className="h-0.5 w-full bg-transparent border-t border-dashed border-white/20 my-auto"></div>
-                
-                {/* White Highway Guardrails */}
-                <div className="absolute top-0 inset-x-0 h-0.5 bg-slate-600/45"></div>
-                
-                {/* Headlights Traffic (White going Left) */}
-                <div className="absolute top-[20%] left-0 right-0 flex justify-between animate-marquee-left">
-                  <span className="w-2.5 h-1 bg-yellow-100 rounded-full blur-[0.5px] shadow-[0_0_8px_white]"></span>
-                  <span className="w-3.5 h-1.5 bg-white rounded-full blur-[0.5px] shadow-[0_0_8px_white] opacity-80"></span>
-                </div>
-
-                {/* Taillights Traffic (Red going Right) */}
-                <div className="absolute bottom-[20%] left-0 right-0 flex justify-around animate-marquee-right">
-                  <span className="w-1.5 h-1 bg-red-500 rounded-full blur-[0.5px] shadow-[0_0_6px_red]"></span>
-                  <span className="w-2.5 h-1 bg-red-605 rounded-full blur-[0.5px] shadow-[0_0_6px_red] opacity-90"></span>
-                </div>
-              </div>
-
-              {/* Surveillance Overlay Message in corner */}
-              <div className="absolute bottom-12 inset-x-0 flex items-center justify-center opacity-30 select-none pointer-events-none">
-                <span className="text-[8px] font-mono text-slate-400 tracking-widest uppercase">AUTO-MONITORAMENTO URBANO ATIVO</span>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -423,20 +335,19 @@ export default function CameraPlayer({
         </div>
 
         {/* Description panel */}
-        <p className="text-xs text-slate-450 leading-relaxed font-sans line-clamp-2">
+        <p className="text-xs text-slate-350 leading-relaxed font-sans line-clamp-2">
           {camera.description}
         </p>
 
         {/* ONVIF Details footer panel & Device Info */}
-        <div className="mt-3 pt-3 border-t border-slate-900 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+        <div className="mt-3 pt-3 border-t border-slate-900 flex items-center justify-between text-[11px] text-slate-400 font-mono">
           <div className="flex items-center space-x-1.5">
             <span className={`h-1.5 w-1.5 rounded-full ${camera.isPtzCompatible ? "bg-emerald-400" : "bg-slate-500"}`}></span>
             <span>{camera.isPtzCompatible ? "ONVIF PTZ ATIVO" : "ONVIF ESTÁTICO"}</span>
           </div>
           
           <div className="flex items-center space-x-1">
-            <Database className="h-3 w-3 text-slate-600" />
-            <span className="text-[10px] text-slate-600">IP: {camera.onvifIp || "N/A"}</span>
+            <span className="text-[10px] text-slate-500">IP: {camera.onvifIp || "N/A"}</span>
           </div>
         </div>
 

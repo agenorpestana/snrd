@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { spawn } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import mysql from "mysql2/promise";
@@ -328,6 +329,59 @@ function getGeminiClient(): GoogleGenAI | null {
   }
 }
 
+const weatherCache = new Map<string, { data: any; expiry: number }>();
+
+function getSimulatedWeather(city: string): any {
+  const cityLower = String(city).toLowerCase();
+  let temp = 22;
+  let condition = "Parcialmente Nublado";
+  let desc = "Tempo agradável com ventos moderados.";
+  let hum = 65;
+  let wind = 14;
+  
+  if (cityLower.includes("joinville")) {
+    temp = 19;
+    condition = "Chuva Leve";
+    desc = "Chuvas fracas de Joinville com umidade característica.";
+    hum = 92;
+    wind = 8;
+  } else if (cityLower.includes("rio") || cityLower.includes("copacabana")) {
+    temp = 27;
+    condition = "Ensolarado";
+    desc = "Céu limpo com ventos costeiros frescos.";
+    hum = 60;
+    wind = 12;
+  } else if (cityLower.includes("são paulo") || cityLower.includes("sp") || cityLower.includes("sao paulo")) {
+    temp = 23;
+    condition = "Nublado";
+    desc = "Céu predominantemente nublado com temperatura estável.";
+    hum = 70;
+    wind = 11;
+  } else if (cityLower.includes("curitiba")) {
+    temp = 14;
+    condition = "Nublado";
+    desc = "Clima frio com névoa úmida típica.";
+    hum = 82;
+    wind = 18;
+  } else if (cityLower.includes("bahia") || cityLower.includes("salvador")) {
+    temp = 29;
+    condition = "Ensolarado";
+    desc = "Dia ensolarado com brisa do mar constante.";
+    hum = 75;
+    wind = 15;
+  }
+
+  return {
+    city: String(city),
+    temp,
+    condition,
+    description: desc,
+    humidity: hum,
+    windSpeed: wind,
+    fetchedAt: Date.now()
+  };
+}
+
 async function startServer() {
   // Inicializa banco de dados MySQL de produção ou fallback local de forma assíncrona
   initMysql().catch((err) => {
@@ -505,6 +559,111 @@ async function startServer() {
       saveDb(db);
       return res.json({ message: "Usuário removido com sucesso." });
     }
+  });
+
+  // Live Transcoding Route: Converts RTSP stream to standard multipart/x-mixed-replace (MJPEG)
+  app.get("/api/cameras/:id/stream", async (req, res) => {
+    const { id } = req.params;
+    let camera: any = null;
+
+    if (isMysqlEnabled && mysqlPool) {
+      try {
+        const [rows]: any = await mysqlPool.query("SELECT * FROM cameras WHERE id = ?", [id]);
+        if (rows.length > 0) {
+          camera = rows[0];
+        }
+      } catch (err) {
+        console.error("Erro ao buscar dados da câmera para streaming:", err);
+      }
+    } else {
+      const db = loadDb();
+      camera = db.cameras.find((c: any) => c.id === id);
+    }
+
+    if (!camera) {
+      return res.status(404).send("Câmera não localizada");
+    }
+
+    const streamUrl = String(camera.streamUrl || "").trim();
+    if (!streamUrl) {
+      return res.status(400).send("Falta endereço de rede e protocolo de comutação da câmera.");
+    }
+
+    // Set standard boundary headers for server-push MJPEG
+    res.writeHead(200, {
+      "Content-Type": "multipart/x-mixed-replace; boundary=--frame",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Connection": "keep-alive",
+      "Pragma": "no-cache",
+      "Expires": "0"
+    });
+
+    console.log(`[RTSP Stream] Inicializando codec ffmpeg de bypass de vídeo para: ${camera.name} (${streamUrl})`);
+
+    // Build perfect arguments to transcode RTSP feed dynamically to Motion JPEG
+    const ffmpegArgs = [
+      "-rtsp_transport", "tcp", // Force stable connection over TCP instead of UDP packets Loss
+      "-i", streamUrl,
+      "-vf", "scale=1024:-1", // Downscale to 1024 width maintaining aspect ratio for optimal web transfer
+      "-q:v", "6", // Balance of details and low latency transport
+      "-f", "image2pipe",
+      "-vcodec", "mjpeg",
+      "-an", // Eliminate unneeded microphone audio streams
+      "-r", "15", // Cap FPS at 15 to secure lighter, smoother rendering
+      "pipe:1"
+    ];
+
+    const ffmpeg = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "ignore"] });
+    let buffer = Buffer.alloc(0);
+
+    ffmpeg.stdout.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      let start = 0;
+
+      while (true) {
+        const soi = buffer.indexOf(Buffer.from([0xff, 0xd8]), start);
+        if (soi === -1) break;
+
+        const eoi = buffer.indexOf(Buffer.from([0xff, 0xd9]), soi + 2);
+        if (eoi === -1) {
+          buffer = buffer.subarray(soi);
+          break;
+        }
+
+        const frame = buffer.subarray(soi, eoi + 2);
+
+        try {
+          res.write("--frame\r\n");
+          res.write("Content-Type: image/jpeg\r\n");
+          res.write(`Content-Length: ${frame.length}\r\n\r\n`);
+          res.write(frame);
+          res.write("\r\n");
+        } catch (writeErr) {
+          ffmpeg.kill("SIGKILL");
+          break;
+        }
+
+        start = eoi + 2;
+      }
+
+      if (start > 0) {
+        buffer = buffer.subarray(start);
+      }
+    });
+
+    ffmpeg.on("error", (err) => {
+      console.error(`[RTSP Stream] Erro iniciando ffmpeg para a câmera ${id}:`, err.message);
+    });
+
+    ffmpeg.on("close", (code) => {
+      console.log(`[RTSP Stream] Transcodificador da câmera ${id} finalizado com código ${code}`);
+      res.end();
+    });
+
+    req.on("close", () => {
+      console.log(`[RTSP Stream] Conexão encerrada pelo cliente, encerrando processo ffmpeg para a câmera ${id}`);
+      ffmpeg.kill("SIGKILL");
+    });
   });
 
   // Get all Cameras
@@ -908,64 +1067,28 @@ async function startServer() {
   });
 
   // Fetch Weather information for a given city using server-side Gemini Search Grounding!
-  // Extremely innovative and highly professional.
+  // Extremely innovative and highly professional. Include server-side caching (15 min TTL) to conserve Gemini quota.
   app.get("/api/weather", async (req, res) => {
     const { city } = req.query;
     if (!city) {
       return res.status(400).json({ error: "Parâmetro 'city' é obrigatório." });
     }
 
+    const cityKey = String(city).trim().toLowerCase();
+
+    // Check active memory cache to prevent unnecessary Gemini API queries (and rate limits)
+    const cached = weatherCache.get(cityKey);
+    if (cached && Date.now() < cached.expiry) {
+      console.log(`[Weather Cache] Retornando previsão de tempo ativa do cache para: ${city}`);
+      return res.json(cached.data);
+    }
+
     const ai = getGeminiClient();
     if (!ai) {
-      // Fallback response with beautiful simulated values customized by city name if Gemini client is unavailable
-      const cityLower = String(city).toLowerCase();
-      let temp = 22;
-      let condition = "Parcialmente Nublado";
-      let desc = "Tempo agradável com ventos moderados.";
-      let hum = 65;
-      let wind = 14;
-      
-      if (cityLower.includes("joinville")) {
-        temp = 19;
-        condition = "Chuva Leve";
-        desc = "Chuvas fracas intermitentes com neblina matinal.";
-        hum = 88;
-        wind = 8;
-      } else if (cityLower.includes("rio") || cityLower.includes("copacabana")) {
-        temp = 27;
-        condition = "Ensolarado";
-        desc = "Céu totalmente limpo, ideal para banhos de mar e atividades físicas.";
-        hum = 60;
-        wind = 12;
-      } else if (cityLower.includes("são paulo") || cityLower.includes("sp")) {
-        temp = 23;
-        condition = "Nublado";
-        desc = "Céu cinza típico paulistano com poucas aberturas de sol.";
-        hum = 70;
-        wind = 11;
-      } else if (cityLower.includes("curitiba")) {
-        temp = 14;
-        condition = "Frio";
-        desc = "Nevoeiro úmido, ventos frios vindos do sul.";
-        hum = 82;
-        wind = 18;
-      } else if (cityLower.includes("bahia") || cityLower.includes("salvador")) {
-        temp = 29;
-        condition = "Ensolarado";
-        desc = "Céu ensolarado com nuvens esparsas à tarde.";
-        hum = 75;
-        wind = 15;
-      }
-
-      return res.json({
-        city: String(city),
-        temp,
-        condition,
-        description: desc,
-        humidity: hum,
-        windSpeed: wind,
-        fetchedAt: Date.now()
-      });
+      const simulated = getSimulatedWeather(String(city));
+      // Save simulated values with shorter 1-min TTL so users can query again if key is changed later
+      weatherCache.set(cityKey, { data: simulated, expiry: Date.now() + 60 * 1000 });
+      return res.json(simulated);
     }
 
     try {
@@ -998,33 +1121,32 @@ Instruções estritas:
       });
 
       let rawText = response.text || "";
-      
-      // Clean potential JSON markdown blocks or whitespace issues
       rawText = rawText.replace(/```json/gi, "").replace(/```/gi, "").trim();
 
-      try {
-        const payload = JSON.parse(rawText);
-        payload.fetchedAt = Date.now();
-        res.json(payload);
-      } catch (jsonErr) {
-        console.error("Erro decodificando resposta estruturada JSON do Gemini:", jsonErr, "Raw Text:", rawText);
-        
-        // Backup direct regex parse attempt or fallback
-        throw new Error("Formato inválido recebido do modelo de linguagem.");
-      }
-    } catch (err: any) {
-      console.error("Erro buscando clima no Gemini:", err.message);
+      const payload = JSON.parse(rawText);
+      payload.fetchedAt = Date.now();
+
+      // Store in memory cache with 15-minute TTL to protect API keys and quota usage
+      weatherCache.set(cityKey, { data: payload, expiry: Date.now() + 15 * 60 * 1000 });
       
-      // Secure local default fallback if Gemini service has internet errors
-      res.json({
-        city: String(city),
-        temp: 21,
-        condition: "Nublado",
-        description: "Tempo estável com variação de nuvens (Serviço Local).",
-        humidity: 68,
-        windSpeed: 10,
-        fetchedAt: Date.now()
-      });
+      console.log(`[Weather] Nova previsão obtida via Gemini e cacheada com sucesso para: ${city}`);
+      return res.json(payload);
+    } catch (err: any) {
+      const isRateLimit = String(err.message).includes("429") || String(err.message).toLowerCase().includes("quota");
+      if (isRateLimit) {
+        console.warn(`[Weather] Quota do Gemini atingida (429/Quota). Usando fallback de resiliência local para: ${city}`);
+      } else {
+        console.error(`[Weather] Erro consultando previsão de tempo via Gemini para ${city}:`, err.message);
+      }
+
+      // If we have an expired cached record, serve stale data instead of generating new mock values
+      if (cached) {
+        console.log(`[Weather Cache] Retornando previsão de tempo expirada (stale/stável) para: ${city}`);
+        return res.json(cached.data);
+      }
+
+      const simulated = getSimulatedWeather(String(city));
+      return res.json(simulated);
     }
   });
 
