@@ -230,89 +230,96 @@ export default function CameraPlayer({
 
         {/* 2. ON-SCREEN DISPLAY (OSD) SURVEILLANCE OVERLAYS */}
         
-        {/* Top left metadata (camera name) */}
-        <div className="absolute top-3 left-3 bg-[#000000]/65 py-1 px-2.5 rounded-full backdrop-blur-sm border border-white/5 select-none pointer-events-none flex items-center gap-1.5 z-10">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#00A767] animate-pulse"></span>
-          <p className="font-sans text-white text-[10px] font-bold tracking-wider uppercase">
-            {camera.name} - LIVE
-          </p>
+        {/* Top HUD transparent bar */}
+        <div className="absolute top-3 inset-x-3 bg-black/60 backdrop-blur-sm px-3.5 py-1.5 rounded-md border border-white/5 flex items-center justify-between pointer-events-none select-none z-10 font-mono text-[10px] text-white">
+          <span className="font-semibold">SNRD {camera.modelName || "VIPW-2000-DOME"} ({camera.onvifIp || "10.65.0.1"})</span>
+          <span className="font-mono tracking-wider">{currentTime}</span>
         </div>
 
-        {/* Top right timestamp & dynamic OSD clock */}
-        <div className="absolute top-3 right-3 select-none pointer-events-none z-10">
-          <p className="font-mono text-[10.5px] text-white font-normal tracking-wider filter drop-shadow-[0_1.5px_1px_rgba(0,0,0,0.9)]">
-            {currentTime}
-          </p>
+        {/* Dynamic RED REC Indicator */}
+        <div className="absolute top-11.5 left-4.5 flex items-center space-x-1.5 select-none pointer-events-none z-10 animate-pulse">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+          <span className="text-[8.5px] font-bold text-red-500 font-mono tracking-wider uppercase filter drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
+            REC 1080P
+          </span>
         </div>
 
-        {/* Dynamic REC overlay */}
-        <div className="absolute top-9 right-3 bg-red-600 px-1.5 py-0.5 rounded text-[9px] text-white font-bold tracking-wide animate-pulse select-none pointer-events-none shadow z-10">
-          REC
+        {/* HUD viewfinder corner brackets */}
+        <div className="absolute inset-3 border border-white/5 rounded pointer-events-none select-none z-10">
+          <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-white/40"></div>
+          <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-white/40"></div>
+          <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-white/40"></div>
+          <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-white/40"></div>
         </div>
 
-        {/* Bottom left OSD camera location watermark */}
-        <div className="absolute bottom-3 left-3 select-none pointer-events-none z-10">
-          <p className="font-mono text-[9px] text-white/75 font-normal tracking-wide filter drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
-            {camera.city} SNRD
-          </p>
+        {/* Bottom left HUD watermark */}
+        <div className="absolute bottom-3 left-3 bg-black/60 px-2 py-0.5 rounded border border-white/5 text-[9px] font-mono text-slate-300 z-10 pointer-events-none">
+          {camera.modelName || "Modelo Customizado"}
+        </div>
+
+        {/* Bottom right HUD PTZ coordinates state */}
+        <div className="absolute bottom-3 right-3 bg-black/60 px-2 py-0.5 rounded border border-white/5 text-[9px] font-mono text-slate-300 z-10 pointer-events-none">
+          P: {panOffset}° T: {tiltOffset}° Z: {zoomScale}x
         </div>
       </div>
 
       {/* 2. LIVE WEATHER INTEGRITY INDICATOR & META CARD */}
-      <div className="p-3.5 flex flex-col bg-[#0B0F19] text-slate-100 border-t border-slate-900/60 select-none">
+      <div className="p-4 flex flex-col bg-[#0b1317] text-slate-100 border-t border-slate-900 select-none">
         
-        {/* Location, Camera Name icon layout */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-[#00A767]/10 text-[#00A767] border border-[#00A767]/15 rounded-lg flex items-center justify-center">
-              <CameraIcon className="h-4.5 w-4.5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-slate-100 group-hover:text-[#00A767] transition-all tracking-wide uppercase">
-                {camera.name}
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5 font-medium">
-                {camera.city}
-              </p>
-            </div>
+        {/* Title, climate & temperature layout */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="font-extrabold text-[15px] text-slate-100 group-hover:text-[#00A767] transition-all tracking-wide font-sans">
+              {camera.name}
+            </h3>
+            {/* Monospace masked url path matching card screenshot */}
+            <p className="text-[10px] text-teal-400 font-mono tracking-normal leading-relaxed break-all mt-1">
+              {camera.streamUrl.replace(/rtsp:\/\/([^:]+):([^@]+)@/, "rtsp://***:***@") || `rtsp://***:***@${camera.onvifIp || "10.65.0.1"}:554/cam/realmonitor?channel=1&subtype=0`}
+            </p>
           </div>
 
-          {/* Real-Time weather forecast segment */}
-          <div className="flex items-center text-right bg-slate-900/40 px-2.5 py-1.5 rounded-lg border border-slate-800/30 min-w-[110px] justify-end">
-            {loadingWeather ? (
-              <div className="flex items-center space-x-1.5 text-slate-400 text-xs">
-                <RefreshCw className="h-3 w-3 animate-spin text-[#00A767]" />
-                <span className="text-[9px] font-mono">Buscando...</span>
-              </div>
-            ) : weatherError ? (
-              <span className="text-[10px] text-slate-500 font-mono">Clima N/D</span>
-            ) : weather ? (
-              <div className="flex items-center space-x-2">
-                <div className="text-right">
-                  <p className="text-xs font-bold text-white leading-none font-mono">
-                    {weather.temp}°C
-                  </p>
-                  <p className="text-[9px] text-[#00A767] whitespace-nowrap leading-tight mt-0.5 max-w-[80px] overflow-hidden text-ellipsis font-medium text-right">
-                    {weather.condition}
-                  </p>
+          {/* Climate card widgets */}
+          {weather && (
+            <div className="flex items-center space-x-2 text-right bg-slate-950/40 px-2.5 py-1.5 rounded-lg border border-slate-800/40 min-w-[110px] justify-end shrink-0">
+              <div className="text-right">
+                <div className="flex items-center gap-1 justify-end font-mono text-xs font-bold text-white">
+                  <span>{weather.temp}°C</span>
+                  <Thermometer className="h-3 w-3 text-red-500" />
                 </div>
-                {getWeatherIcon(weather.condition)}
+                <p className="text-[8.5px] text-emerald-400 leading-tight mt-0.5 text-right font-medium max-w-[80px] overflow-hidden text-ellipsis">
+                  {weather.condition}
+                </p>
               </div>
-            ) : (
-              <span className="text-[10px] text-slate-500">N/A</span>
-            )}
-          </div>
+              {getWeatherIcon(weather.condition)}
+            </div>
+          )}
         </div>
 
-        {/* Small Admin action utilities when enabled */}
+        {/* Complete autodiscovery details row under stream card */}
+        <p className="text-[11.5px] text-slate-300 mt-3 font-sans leading-relaxed">
+          {camera.description || `Câmera SNRD localizada em rede interna no IP ${camera.onvifIp || "10.65.0.1"}. Autodescoberta ONVIF executada com perfil S/T/G ativo.`}
+        </p>
+
+        {/* Dynamic footer status ribbon */}
+        <div className="mt-4 pt-3.5 border-t border-slate-900/60 flex items-center justify-between font-mono text-[10px] text-slate-400">
+          <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            ONVIF PTZ ATIVO
+          </div>
+          <span className="text-slate-500">
+            IP: {camera.onvifIp || "10.65.0.1"}
+          </span>
+        </div>
+
+        {/* Admin and action control buttons panel matching the card design */}
         {isAdmin && (onEditClick || onDeleteClick) && (
-          <div className="mt-3 pt-3 border-t border-slate-900 flex items-center justify-end space-x-2">
+          <div className="mt-4 pt-3.5 border-t border-slate-900 flex items-center justify-start space-x-2 border-b border-transparent pb-1">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 if (onEditClick) onEditClick(camera);
               }}
-              className="text-[10px] bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-350 py-1 px-2.5 rounded transition-colors font-medium cursor-pointer"
+              className="bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 text-slate-250 text-[11px] font-bold py-1.5 px-3.5 rounded transition-all cursor-pointer"
             >
               Editar Configurações
             </button>
@@ -321,22 +328,12 @@ export default function CameraPlayer({
                 e.stopPropagation();
                 if (onDeleteClick) onDeleteClick(camera);
               }}
-              className="text-[10px] bg-red-950/40 hover:bg-red-950 border border-red-900/30 text-red-300 py-1 px-2.5 rounded transition-colors font-medium cursor-pointer"
+              className="bg-red-950/20 hover:bg-red-950 border border-red-900/30 text-red-400 text-[11px] font-bold py-1.5 px-3.5 rounded transition-all cursor-pointer"
             >
               Excluir
             </button>
           </div>
         )}
-
-        {/* Dynamic separator action row - Matching Unity DVR footer button line */}
-        <div className="mt-3.5 pt-3.5 border-t border-slate-900/40 flex items-center justify-between">
-          <span className="text-[10px] uppercase tracking-wider font-extrabold text-[#00A767] hover:text-[#009055] transition-colors cursor-pointer flex items-center gap-1.5 hover:underline">
-            VER GRAVAÇÕES
-          </span>
-          <span className="text-[9px] font-mono text-slate-500 tracking-wider">
-            1080P H.264
-          </span>
-        </div>
       </div>
     </div>
   );

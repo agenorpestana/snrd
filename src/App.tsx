@@ -91,8 +91,6 @@ export default function App(): React.JSX.Element {
         viewMode={viewMode}
         setViewMode={setViewMode}
         activeCameraCount={cameras.length}
-        activeView={activeView}
-        setActiveView={setActiveView}
       />
 
       {/* 2. MAIN HUB LAYOUT */}
@@ -126,7 +124,7 @@ export default function App(): React.JSX.Element {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
             
             {/* LEFT SECTION (GRID OR THEATER STREAM VIEW) */}
-            <div className={`${viewMode === "grid" ? "col-span-1 lg:col-span-3" : "col-span-1 lg:col-span-2"} space-y-5`}>
+            <div className="col-span-1 lg:col-span-2 space-y-5">
               
               {/* Sector Title indicator */}
               <div className="flex items-center justify-between bg-[#101c1f]/50 px-4 py-2.5 rounded-lg border border-slate-800 backdrop-blur-sm select-none">
@@ -216,14 +214,12 @@ export default function App(): React.JSX.Element {
             </div>
 
             {/* RIGHT SECTION: PTZ DIRECTIONS & CONSOLE TELEMETRY */}
-            {viewMode === "theater" && (
-              <div className="space-y-6">
-                <PtzControl
-                  selectedCamera={selectedCamera}
-                  onPtzChange={handleUpdateCamera}
-                />
-              </div>
-            )}
+            <div className="space-y-6">
+              <PtzControl
+                selectedCamera={selectedCamera}
+                onPtzChange={handleUpdateCamera}
+              />
+            </div>
           </div>
         ) : (
           /* SEPARATE SECURE ADMIN SYSTEM */
