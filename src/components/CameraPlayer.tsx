@@ -271,16 +271,18 @@ export default function CameraPlayer({
           {camera.description || `Câmera SNRD localizada em rede interna no IP ${camera.onvifIp || "10.65.0.1"}. Autodescoberta ONVIF executada com perfil S/T/G ativo.`}
         </p>
 
-        {/* Dynamic footer status ribbon */}
-        <div className="mt-4 pt-3.5 border-t border-slate-900/60 flex items-center justify-between font-mono text-[10px] text-slate-400">
-          <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            ONVIF PTZ ATIVO
+        {/* Dynamic footer status ribbon - Hidden on public page, visible only for Admin */}
+        {isAdmin && (
+          <div className="mt-4 pt-3.5 border-t border-slate-900/60 flex items-center justify-between font-mono text-[10px] text-slate-400">
+            <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              ONVIF PTZ ATIVO
+            </div>
+            <span className="text-slate-500">
+              IP: {camera.onvifIp || "10.65.0.1"}
+            </span>
           </div>
-          <span className="text-slate-500">
-            IP: {camera.onvifIp || "10.65.0.1"}
-          </span>
-        </div>
+        )}
 
         {/* Admin and action control buttons panel matching the card design */}
         {isAdmin && (onEditClick || onDeleteClick) && (
