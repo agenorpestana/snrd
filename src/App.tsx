@@ -12,7 +12,7 @@ export default function App(): React.JSX.Element {
   const [isAdmin, setIsAdmin] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "theater">("grid");
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState<"live" | "admin">("live");
+  const [activeView, setActiveView] = useState<"live" | "admin" | "recordings">("live");
 
   // Load cameras and admin session persistence on mount
   useEffect(() => {
@@ -91,17 +91,42 @@ export default function App(): React.JSX.Element {
         viewMode={viewMode}
         setViewMode={setViewMode}
         activeCameraCount={cameras.length}
+        activeView={activeView}
+        setActiveView={setActiveView}
       />
 
       {/* 2. MAIN HUB LAYOUT */}
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 md:px-6 py-6 space-y-6">
         
-        {activeView === "live" ? (
+        {activeView === "recordings" ? (
+          /* DYNAMIC RECORDINGS SIMULATOR PANEL */
+          <div className="max-w-4xl mx-auto space-y-6 animate-fade-in py-8">
+            <div className="bg-[#0a0f18]/80 backdrop-blur border border-slate-900/65 rounded-2xl p-10 text-center space-y-5 shadow-2xl">
+              <div className="h-16 w-16 bg-[#00A767]/10 text-[#00A767] border border-[#00A767]/15 rounded-2xl flex items-center justify-center mx-auto animate-pulse">
+                <Video className="h-8 w-8" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-slate-100 tracking-wide uppercase">Gravador de Vídeo Digital (Interno)</h3>
+                <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed font-sans">
+                  Não existem arquivos de gravações locais indexados para os dispositivos configurados. O arquivamento automático do DVR é acionado a cada 24 horas no ambiente de rede local.
+                </p>
+              </div>
+              <div className="pt-3">
+                <button 
+                  onClick={() => setActiveView("live")}
+                  className="bg-[#00A767] hover:bg-[#009055] text-black font-extrabold text-[11px] py-2.5 px-6 rounded-xl transition-all uppercase tracking-wider cursor-pointer shadow-md shadow-[#00A767]/10"
+                >
+                  Continuar no Monitoramento Ao Vivo
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : activeView === "live" ? (
           /* PUBLIC WATCH BOARD */
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
             
             {/* LEFT SECTION (GRID OR THEATER STREAM VIEW) */}
-            <div className="col-span-1 lg:col-span-2 space-y-5">
+            <div className={`${viewMode === "grid" ? "col-span-1 lg:col-span-3" : "col-span-1 lg:col-span-2"} space-y-5`}>
               
               {/* Sector Title indicator */}
               <div className="flex items-center justify-between bg-[#101c1f]/50 px-4 py-2.5 rounded-lg border border-slate-800 backdrop-blur-sm select-none">
@@ -191,12 +216,14 @@ export default function App(): React.JSX.Element {
             </div>
 
             {/* RIGHT SECTION: PTZ DIRECTIONS & CONSOLE TELEMETRY */}
-            <div className="space-y-6">
-              <PtzControl
-                selectedCamera={selectedCamera}
-                onPtzChange={handleUpdateCamera}
-              />
-            </div>
+            {viewMode === "theater" && (
+              <div className="space-y-6">
+                <PtzControl
+                  selectedCamera={selectedCamera}
+                  onPtzChange={handleUpdateCamera}
+                />
+              </div>
+            )}
           </div>
         ) : (
           /* SEPARATE SECURE ADMIN SYSTEM */

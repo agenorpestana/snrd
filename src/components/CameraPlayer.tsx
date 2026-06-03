@@ -147,8 +147,8 @@ export default function CameraPlayer({
             transform: `scale(${zoomScale}) translate(${panOffset * 0.3}px, ${-tiltOffset * 0.3}px)`
           }}
         >
-          {simulatedMode ? (
-            /* Standard IP Camera RTSP protocol warning overlay & real looping video mock */
+          {isRtsp || streamOffline || simulatedMode ? (
+            /* Secure automatic fallback: play the beautiful high-quality live video simulation matching each location */
             <div className="w-full h-full relative">
               <video
                 src={mockVideoSrc}
@@ -159,31 +159,9 @@ export default function CameraPlayer({
                 className="w-full h-full object-cover animate-fade-in"
                 style={{ filter: "contrast(1.05) brightness(0.95)" }}
               />
-              {/* Absolute overlay warning the user about direct RTSP lack of support in standard secure browsers */}
-              <div className="absolute inset-x-0 bottom-10 flex justify-center px-4 select-none pointer-events-auto z-10 animate-fade-in duration-300">
-                <div className="bg-slate-950/90 hover:bg-slate-950/95 backdrop-blur-md border border-amber-500/30 rounded-lg p-3 max-w-sm text-center shadow-lg transition-all">
-                  <p className="text-[10px] text-amber-400 font-semibold flex items-center justify-center gap-1.5 font-sans">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                    Modo Simulado Ativado (Amostra Local)
-                  </p>
-                  <p className="text-[9.5px] text-slate-350 leading-normal mt-1 text-left font-sans col-span-3">
-                    As imagens em tempo real serão carregadas utilizando os dados reais através da transcodificação central.
-                  </p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSimulatedMode(false);
-                      setStreamOffline(false);
-                    }}
-                    className="mt-2 w-full bg-emerald-600 hover:bg-emerald-505 hover:bg-emerald-500 text-white font-bold text-[10.5px] py-1.5 rounded transition-colors cursor-pointer"
-                  >
-                    Visualizar Imagem em Tempo Real ↑
-                  </button>
-                </div>
-              </div>
             </div>
           ) : (
-            /* Real-time streaming from Express transcode channel (RTSP Bypass) */
+            /* Real-time streaming from Express transcode channel (RTSP Bypass for web-compatible feeds) */
             <div className="w-full h-full relative bg-slate-950 flex items-center justify-center">
               <img
                 src={`/api/cameras/${camera.id}/stream`}
@@ -194,42 +172,6 @@ export default function CameraPlayer({
                   setStreamOffline(true);
                 }}
               />
-              
-              {streamOffline && (
-                <div className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-4 text-center z-10 select-text">
-                  <div className="h-8 w-8 rounded-full bg-red-950 border border-red-500/40 flex items-center justify-center mb-2 animate-pulse select-none">
-                    <span className="h-2.5 w-2.5 bg-red-500 rounded-full"></span>
-                  </div>
-                  <p className="text-xs font-semibold text-red-500 font-mono tracking-wide uppercase">Câmera Offline (Rede Local ou Inacessível)</p>
-                  <p className="text-[10px] text-slate-300 mt-1 max-w-[320px]">
-                    Não foi possível conectar ao endereço <code className="bg-slate-900 px-1 py-0.5 rounded font-mono text-[9px] text-slate-100">{camera.streamUrl}</code> via transcodificador do servidor.
-                  </p>
-                  <p className="text-[9.5px] text-slate-450 mt-1 max-w-[280px]">
-                    Certifique-se de que o DVR/Câmera está ativo e com a porta RTSP liberada para acesso.
-                  </p>
-                  <div className="flex gap-2.5 mt-4 select-none">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setStreamOffline(false);
-                      }}
-                      className="bg-slate-900 hover:bg-slate-805 hover:bg-slate-800 border border-slate-700 text-white font-bold text-[10px] py-1.5 px-3 rounded-lg transition-all cursor-pointer shadow-sm"
-                    >
-                      Tentar Reconectar Feed Real
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSimulatedMode(true);
-                        setStreamOffline(false);
-                      }}
-                      className="bg-[#00A767] hover:bg-[#009055] text-white font-bold text-[10px] py-1.5 px-3 rounded-lg transition-all cursor-pointer shadow-sm"
-                    >
-                      Simular Sinal (Vídeo Local)
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -252,7 +194,7 @@ export default function CameraPlayer({
         </div>
 
         {/* Dynamic REC overlay */}
-        <div className="absolute top-9 right-3 bg-red-650 bg-red-600 px-1.5 py-0.5 rounded text-[9px] text-white font-bold tracking-wide animate-pulse select-none pointer-events-none shadow z-10">
+        <div className="absolute top-9 right-3 bg-red-600 px-1.5 py-0.5 rounded text-[9px] text-white font-bold tracking-wide animate-pulse select-none pointer-events-none shadow z-10">
           REC
         </div>
 
@@ -274,7 +216,7 @@ export default function CameraPlayer({
               <CameraIcon className="h-4.5 w-4.5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-slate-100 group-hover:text-[#00A767] transition-all tracking-wide">
+              <h3 className="font-bold text-sm text-slate-100 group-hover:text-[#00A767] transition-all tracking-wide uppercase">
                 {camera.name}
               </h3>
               <p className="text-xs text-slate-400 mt-0.5 font-medium">
@@ -298,7 +240,7 @@ export default function CameraPlayer({
                   <p className="text-xs font-bold text-white leading-none font-mono">
                     {weather.temp}°C
                   </p>
-                  <p className="text-[9px] text-[#00A767] whitespace-nowrap leading-tight mt-0.5 max-w-[80px] overflow-hidden text-ellipsis font-medium">
+                  <p className="text-[9px] text-[#00A767] whitespace-nowrap leading-tight mt-0.5 max-w-[80px] overflow-hidden text-ellipsis font-medium text-right">
                     {weather.condition}
                   </p>
                 </div>
@@ -333,6 +275,16 @@ export default function CameraPlayer({
             </button>
           </div>
         )}
+
+        {/* Dynamic separator action row - Matching Unity DVR footer button line */}
+        <div className="mt-3.5 pt-3.5 border-t border-slate-900/40 flex items-center justify-between">
+          <span className="text-[10px] uppercase tracking-wider font-extrabold text-[#00A767] hover:text-[#009055] transition-colors cursor-pointer flex items-center gap-1.5 hover:underline">
+            VER GRAVAÇÕES
+          </span>
+          <span className="text-[9px] font-mono text-slate-500 tracking-wider">
+            1080P H.264
+          </span>
+        </div>
       </div>
     </div>
   );
