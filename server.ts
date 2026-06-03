@@ -382,6 +382,108 @@ function getSimulatedWeather(city: string): any {
   };
 }
 
+// Fetch real-time weather information from Open-Meteo (fully online and dynamic)
+async function fetchRealWeather(city: string): Promise<any | null> {
+  try {
+    const trimmedCity = String(city).trim();
+    if (!trimmedCity) return null;
+
+    console.log(`[Weather API] Consultando geocodificação Open-Meteo para: "${trimmedCity}"`);
+    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmedCity)}&count=1&language=pt`;
+    
+    const geoRes = await fetch(geoUrl, { signal: AbortSignal.timeout(4000) });
+    if (!geoRes.ok) {
+      console.warn(`[Weather API] Falha na resposta de geocodificação Open-Meteo: status ${geoRes.status}`);
+      return null;
+    }
+
+    const geoData: any = await geoRes.json();
+    if (!geoData.results || geoData.results.length === 0) {
+      console.warn(`[Weather API] Nenhuma correspondência de cidade encontrada no Open-Meteo para: "${trimmedCity}"`);
+      return null;
+    }
+
+    const { latitude, longitude, name: formattedName, admin1 } = geoData.results[0];
+    console.log(`[Weather API] Encontrado: ${formattedName} (Região: ${admin1 || "N/A"}) - Coordenadas: (${latitude}, ${longitude})`);
+
+    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto`;
+    const forecastRes = await fetch(forecastUrl, { signal: AbortSignal.timeout(4000) });
+    if (!forecastRes.ok) {
+      console.warn(`[Weather API] Falha na resposta meteorológica Open-Meteo: status ${forecastRes.status}`);
+      return null;
+    }
+
+    const forecastData: any = await forecastRes.json();
+    const current = forecastData.current;
+    if (!current) {
+      console.warn(`[Weather API] Resposta Open-Meteo não contém seção 'current'`);
+      return null;
+    }
+
+    const temp = Math.round(current.temperature_2m);
+    const humidity = Math.round(current.relative_humidity_2m);
+    const windSpeed = Math.round(current.wind_speed_10m);
+    const weatherCode = Number(current.weather_code);
+
+    // Map weather codes to friendly descriptions and conditions in Portuguese
+    let condition = "Parcialmente Nublado";
+    let description = "Tempo agradável na região.";
+
+    if (weatherCode === 0) {
+      condition = "Ensolarado";
+      description = "Céu extremamente limpo com muito sol.";
+    } else if (weatherCode >= 1 && weatherCode <= 3) {
+      condition = "Parcialmente Nublado";
+      description = "Céu com mescla de nuvens e aberturas de sol.";
+    } else if (weatherCode === 45 || weatherCode === 48) {
+      condition = "Nublado";
+      description = "Nevoeiro úmido ou névoa com visibilidade reduzida.";
+    } else if (weatherCode === 51 || weatherCode === 53 || weatherCode === 55) {
+      condition = "Chuvisco";
+      description = "Condição típica de garoa leve ou chuviscos finos.";
+    } else if (weatherCode === 61 || weatherCode === 63 || weatherCode === 65) {
+      if (weatherCode === 61) {
+        condition = "Chuva Leve";
+        description = "Chuva contínua leve caindo sobre a cidade.";
+      } else if (weatherCode === 63) {
+        condition = "Chuva";
+        description = "Chuva moderada regular registrada na região.";
+      } else {
+        condition = "Chuva Forte";
+        description = "Chuva pesada constante e condições climáticas instáveis.";
+      }
+    } else if (weatherCode === 66 || weatherCode === 67) {
+      condition = "Chuva";
+      description = "Chuva congelante e ventos gelados persistentes.";
+    } else if (weatherCode >= 71 && weatherCode <= 77) {
+      condition = "Neve";
+      description = "Precipitação sólida de neve e frio intenso.";
+    } else if (weatherCode >= 80 && weatherCode <= 82) {
+      condition = "Parcialmente Nublado";
+      description = "Instabilidade atmosférica gerando pancadas de chuva localizadas.";
+    } else if (weatherCode === 95) {
+      condition = "Temporal";
+      description = "Área de instabilidade ativa com relâmpagos e rajadas de vento.";
+    } else if (weatherCode === 96 || weatherCode === 99) {
+      condition = "Temporal";
+      description = "Tempestade severa com possibilidade de trovoadas e granizo.";
+    }
+
+    return {
+      city: formattedName,
+      temp,
+      condition,
+      description,
+      humidity,
+      windSpeed,
+      fetchedAt: Date.now()
+    };
+  } catch (err: any) {
+    console.error(`[Weather API] Erro ao buscar clima em tempo real para: ${city}:`, err.message);
+    return null;
+  }
+}
+
 async function startServer() {
   // Inicializa banco de dados MySQL de produção ou fallback local de forma assíncrona
   initMysql().catch((err) => {
@@ -1170,12 +1272,23 @@ async function startServer() {
 
     const cityKey = String(city).trim().toLowerCase();
 
-    // Check active memory cache to prevent unnecessary Gemini API queries (and rate limits)
+    // Check active memory cache to prevent unnecessary external queries
     const cached = weatherCache.get(cityKey);
     if (cached && Date.now() < cached.expiry) {
       console.log(`[Weather Cache] Retornando previsão de tempo ativa do cache para: ${city}`);
       return res.json(cached.data);
     }
+
+    // Attempt real live weather lookup first (Open-Meteo API)
+    const realWeatherData = await fetchRealWeather(String(city));
+    if (realWeatherData) {
+      // Store in memory cache with 15-minute TTL
+      weatherCache.set(cityKey, { data: realWeatherData, expiry: Date.now() + 15 * 60 * 1000 });
+      console.log(`[Weather API] Clima real-time do Open-Meteo obtido e cacheado com sucesso para: ${city}`);
+      return res.json(realWeatherData);
+    }
+
+    console.log(`[Weather API] Open-Meteo indisponível ou sem resultados para "${city}". Tentando canal secundário (Gemini com Google Search)...`);
 
     const ai = getGeminiClient();
     if (!ai) {
