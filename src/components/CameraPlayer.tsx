@@ -25,8 +25,6 @@ export default function CameraPlayer({
   const [currentTime, setCurrentTime] = useState("");
   const [streamOffline, setStreamOffline] = useState(false);
   const [simulatedMode, setSimulatedMode] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const [streamUrlWithBuster, setStreamUrlWithBuster] = useState(`/api/cameras/${camera.id}/stream`);
 
   // Dynamic ticking clock for surveillance overlay
   useEffect(() => {
@@ -73,20 +71,7 @@ export default function CameraPlayer({
   useEffect(() => {
     setStreamOffline(false);
     setSimulatedMode(false);
-    setRetryCount(0);
-    setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
-  }, [camera.streamUrl, camera.id]);
-
-  const handleImageError = () => {
-    if (retryCount < 4) {
-      setTimeout(() => {
-        setRetryCount((prev) => prev + 1);
-        setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?retry=${retryCount + 1}&t=${Date.now()}`);
-      }, 1500);
-    } else {
-      setStreamOffline(true);
-    }
-  };
+  }, [camera.streamUrl]);
 
   // Determine weather icon representation
   const getWeatherIcon = (condition: string) => {
@@ -206,11 +191,13 @@ export default function CameraPlayer({
             <div className="w-full h-full relative bg-slate-950 flex items-center justify-center">
               {!streamOffline ? (
                 <img
-                  src={streamUrlWithBuster}
+                  src={`/api/cameras/${camera.id}/stream`}
                   alt={camera.name}
                   className="w-full h-full object-cover animate-fade-in"
                   referrerPolicy="no-referrer"
-                  onError={handleImageError}
+                  onError={() => {
+                    setStreamOffline(true);
+                  }}
                 />
               ) : (
                 <div className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-4 text-center z-10 select-text">
@@ -281,21 +268,19 @@ export default function CameraPlayer({
 
         {/* Complete autodiscovery details row under stream card */}
         <p className="text-[11.5px] text-slate-300 mt-3 font-sans leading-relaxed">
-          {camera.description || `Câmera de monitoramento ativa em ${camera.city || "rede local"}.`}
+          {camera.description || `Câmera SNRD localizada em rede interna no IP ${camera.onvifIp || "10.65.0.1"}. Autodescoberta ONVIF executada com perfil S/T/G ativo.`}
         </p>
 
-        {/* Dynamic footer status ribbon - Hidden on public page, visible only for Admin */}
-        {isAdmin && (
-          <div className="mt-4 pt-3.5 border-t border-slate-900/60 flex items-center justify-between font-mono text-[10px] text-slate-400">
-            <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              ONVIF PTZ ATIVO
-            </div>
-            <span className="text-slate-500">
-              IP: {camera.onvifIp || "10.65.0.1"}
-            </span>
+        {/* Dynamic footer status ribbon */}
+        <div className="mt-4 pt-3.5 border-t border-slate-900/60 flex items-center justify-between font-mono text-[10px] text-slate-400">
+          <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            ONVIF PTZ ATIVO
           </div>
-        )}
+          <span className="text-slate-500">
+            IP: {camera.onvifIp || "10.65.0.1"}
+          </span>
+        </div>
 
         {/* Admin and action control buttons panel matching the card design */}
         {isAdmin && (onEditClick || onDeleteClick) && (

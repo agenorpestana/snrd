@@ -120,19 +120,19 @@ export default function PtzControl({ selectedCamera, onPtzChange }: PtzControlPr
           {selectedCamera.isPtzCompatible ? (
             <>
               {/* JOYSTICK CONTROLLER */}
-              <div className="flex flex-col items-center justify-center py-2.5">
-                <div className="relative w-28 h-28 bg-slate-950 rounded-full border-2 border-slate-800 shadow-inner flex items-center justify-center p-2">
+              <div className="flex flex-col items-center justify-center py-2">
+                <div className="relative w-40 h-40 bg-slate-950 rounded-full border-4 border-slate-800/80 shadow-inner flex items-center justify-center p-3">
                   
                   {/* Center circle */}
-                  <div className="absolute w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center z-10">
+                  <div className="absolute w-16 h-16 bg-slate-900 border-2 border-slate-800 rounded-full flex items-center justify-center z-10">
                     <button
                       id="ptz-zoom-rst"
                       onClick={() => executePtz("zoom_reset")}
                       disabled={isSending}
-                      className="text-[8px] font-bold font-mono py-0.5 px-1 rounded text-white bg-[#00A767] hover:bg-[#009055] transition-colors focus:ring-1 focus:ring-emerald-400 cursor-pointer text-center"
+                      className="text-[9px] font-bold font-mono py-1 px-1.5 rounded text-white bg-[#00A767] hover:bg-[#009055] transition-colors focus:ring-1 focus:ring-emerald-400 cursor-pointer text-center"
                       title="Resetar Enquadramento"
                     >
-                      RST
+                      RESET
                     </button>
                   </div>
 
@@ -141,10 +141,10 @@ export default function PtzControl({ selectedCamera, onPtzChange }: PtzControlPr
                     id="ptz-up-btn"
                     onClick={() => executePtz("up")}
                     disabled={isSending}
-                    className="absolute top-1 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all cursor-pointer border border-[#ffffff04]"
+                    className="absolute top-2 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all cursor-pointer border border-[#ffffff04]"
                     title="Olhar Para Cima (Tilt Up)"
                   >
-                    <ChevronUp className="h-5 w-5" />
+                    <ChevronUp className="h-6 w-6" />
                   </button>
 
                   {/* Down button */}
@@ -152,10 +152,10 @@ export default function PtzControl({ selectedCamera, onPtzChange }: PtzControlPr
                     id="ptz-down-btn"
                     disabled={isSending}
                     onClick={() => executePtz("down")}
-                    className="absolute bottom-1 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all cursor-pointer border border-[#ffffff04]"
+                    className="absolute bottom-2 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all cursor-pointer border border-[#ffffff04]"
                     title="Olhar Para Baixo (Tilt Down)"
                   >
-                    <ChevronDown className="h-5 w-5" />
+                    <ChevronDown className="h-6 w-6" />
                   </button>
 
                   {/* Left button */}
@@ -163,10 +163,10 @@ export default function PtzControl({ selectedCamera, onPtzChange }: PtzControlPr
                     id="ptz-left-btn"
                     disabled={isSending}
                     onClick={() => executePtz("left")}
-                    className="absolute left-1 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all cursor-pointer border border-[#ffffff04]"
+                    className="absolute left-2 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all cursor-pointer border border-[#ffffff04]"
                     title="Girar Esquerda (Pan Left)"
                   >
-                    <ChevronLeft className="h-5 w-5" />
+                    <ChevronLeft className="h-6 w-6" />
                   </button>
 
                   {/* Right button */}
@@ -174,10 +174,10 @@ export default function PtzControl({ selectedCamera, onPtzChange }: PtzControlPr
                     id="ptz-right-btn"
                     disabled={isSending}
                     onClick={() => executePtz("right")}
-                    className="absolute right-1 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all cursor-pointer border border-[#ffffff04]"
+                    className="absolute right-2 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all cursor-pointer border border-[#ffffff04]"
                     title="Girar Direita (Pan Right)"
                   >
-                    <ChevronRight className="h-5 w-5" />
+                    <ChevronRight className="h-6 w-6" />
                   </button>
                 </div>
               </div>
