@@ -13,6 +13,7 @@ export default function App(): React.JSX.Element {
   const [viewMode, setViewMode] = useState<"grid" | "theater">("grid");
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<"live" | "admin" | "recordings">("live");
+  const [cameraToEdit, setCameraToEdit] = useState<Camera | null>(null);
 
   // Load cameras and admin session persistence on mount
   useEffect(() => {
@@ -91,6 +92,10 @@ export default function App(): React.JSX.Element {
         viewMode={viewMode}
         setViewMode={setViewMode}
         activeCameraCount={cameras.length}
+        activeView={activeView}
+        onAdminViewClick={() => {
+          setActiveView("admin");
+        }}
       />
 
       {/* 2. MAIN HUB LAYOUT */}
@@ -165,7 +170,7 @@ export default function App(): React.JSX.Element {
                       onSelect={() => setSelectedId(cam.id)}
                       isAdmin={isAdmin}
                       onEditClick={(c) => {
-                        // Switch active view to admin edit
+                        setCameraToEdit(c);
                         setActiveView("admin");
                       }}
                       onDeleteClick={(c) => handleDeleteCamera(c.id)}
@@ -182,6 +187,10 @@ export default function App(): React.JSX.Element {
                         isSelected={true}
                         onSelect={() => {}}
                         isAdmin={isAdmin}
+                        onEditClick={(c) => {
+                          setCameraToEdit(c);
+                          setActiveView("admin");
+                        }}
                         onDeleteClick={(c) => handleDeleteCamera(c.id)}
                       />
                       
@@ -250,6 +259,8 @@ export default function App(): React.JSX.Element {
               onAddCamera={handleAddCamera}
               onUpdateCamera={handleUpdateCamera}
               onDeleteCamera={handleDeleteCamera}
+              cameraToEdit={cameraToEdit}
+              onClearEditCamera={() => setCameraToEdit(null)}
             />
           </div>
         )}

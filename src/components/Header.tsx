@@ -8,6 +8,8 @@ interface HeaderProps {
   viewMode: "grid" | "theater";
   setViewMode: (mode: "grid" | "theater") => void;
   activeCameraCount: number;
+  activeView?: "live" | "admin" | "recordings";
+  onAdminViewClick?: () => void;
 }
 
 export default function Header({
@@ -17,6 +19,8 @@ export default function Header({
   viewMode,
   setViewMode,
   activeCameraCount,
+  activeView = "live",
+  onAdminViewClick,
 }: HeaderProps) {
   return (
     <header className="bg-[#00A767] text-white shadow-md select-none border-b border-[#009055]">
@@ -81,6 +85,16 @@ export default function Header({
                   <Shield className="h-3.5 w-3.5 text-emerald-200" />
                   <span className="text-emerald-150">Administrador</span>
                 </div>
+                {activeView !== "admin" && (
+                  <button
+                    id="admin-panel-return-btn"
+                    onClick={onAdminViewClick}
+                    className="bg-white hover:bg-emerald-50 text-[#00A767] font-semibold text-xs px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow cursor-pointer mr-1"
+                  >
+                    <Shield className="h-3.5 w-3.5" />
+                    <span>Painel Admin</span>
+                  </button>
+                )}
                 <button
                   id="admin-logout-btn"
                   onClick={onLogoutClick}

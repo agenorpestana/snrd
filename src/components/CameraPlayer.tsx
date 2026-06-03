@@ -25,6 +25,8 @@ export default function CameraPlayer({
   const [currentTime, setCurrentTime] = useState("");
   const [streamOffline, setStreamOffline] = useState(false);
   const [simulatedMode, setSimulatedMode] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [streamUrlWithBuster, setStreamUrlWithBuster] = useState(`/api/cameras/${camera.id}/stream`);
 
   // Dynamic ticking clock for surveillance overlay
   useEffect(() => {
@@ -71,7 +73,20 @@ export default function CameraPlayer({
   useEffect(() => {
     setStreamOffline(false);
     setSimulatedMode(false);
-  }, [camera.streamUrl]);
+    setRetryCount(0);
+    setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
+  }, [camera.streamUrl, camera.id]);
+
+  const handleImageError = () => {
+    if (retryCount < 4) {
+      setTimeout(() => {
+        setRetryCount((prev) => prev + 1);
+        setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?retry=${retryCount + 1}&t=${Date.now()}`);
+      }, 1500);
+    } else {
+      setStreamOffline(true);
+    }
+  };
 
   // Determine weather icon representation
   const getWeatherIcon = (condition: string) => {
@@ -152,13 +167,8 @@ export default function CameraPlayer({
       {/* 1. SURVEILLANCE VIEWPORT */}
       <div className="relative aspect-video bg-slate-950 overflow-hidden select-none">
         
-        {/* Real video container with pan tilt zoom transitions */}
-        <div 
-          className="absolute inset-0 w-full h-full transition-transform duration-500 ease-out origin-center"
-          style={{
-            transform: `scale(${effectiveZoom}) translate(${translateX}%, ${translateY}%)`
-          }}
-        >
+        {/* Real video container with normal layout and no zoom clipping */}
+        <div className="absolute inset-0 w-full h-full">
           {simulatedMode ? (
             /* Secure automatic fallback: play the beautiful high-quality live video simulation matching each location */
             <div className="w-full h-full relative">
@@ -168,7 +178,7 @@ export default function CameraPlayer({
                 loop
                 muted
                 playsInline
-                className="w-full h-full object-cover animate-fade-in"
+                className="w-full h-full object-contain animate-fade-in"
                 style={{ filter: "contrast(1.05) brightness(0.95)" }}
               />
               {/* Overlay info for active simulation with option to return to live stream */}
@@ -196,13 +206,11 @@ export default function CameraPlayer({
             <div className="w-full h-full relative bg-slate-950 flex items-center justify-center">
               {!streamOffline ? (
                 <img
-                  src={`/api/cameras/${camera.id}/stream`}
+                  src={streamUrlWithBuster}
                   alt={camera.name}
-                  className="w-full h-full object-cover animate-fade-in"
+                  className="w-full h-full object-contain bg-slate-950 animate-fade-in"
                   referrerPolicy="no-referrer"
-                  onError={() => {
-                    setStreamOffline(true);
-                  }}
+                  onError={handleImageError}
                 />
               ) : (
                 <div className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-4 text-center z-10 select-text">
@@ -273,19 +281,10 @@ export default function CameraPlayer({
 
         {/* Complete autodiscovery details row under stream card */}
         <p className="text-[11.5px] text-slate-300 mt-3 font-sans leading-relaxed">
-          {camera.description || `Câmera SNRD localizada em rede interna no IP ${camera.onvifIp || "10.65.0.1"}. Autodescoberta ONVIF executada com perfil S/T/G ativo.`}
+          {camera.description || `Câmera de monitoramento ativa em ${camera.city || "rede local"}.`}
         </p>
 
-        {/* Dynamic footer status ribbon */}
-        <div className="mt-4 pt-3.5 border-t border-slate-900/60 flex items-center justify-between font-mono text-[10px] text-slate-400">
-          <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            ONVIF PTZ ATIVO
-          </div>
-          <span className="text-slate-500">
-            IP: {camera.onvifIp || "10.65.0.1"}
-          </span>
-        </div>
+        {/* Dynamic footer status ribbon - Hidden on public page, visible only for Admin */}
 
         {/* Admin and action control buttons panel matching the card design */}
         {isAdmin && (onEditClick || onDeleteClick) && (

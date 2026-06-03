@@ -10,6 +10,8 @@ interface AdminPanelProps {
   onAddCamera: (camera: Camera) => void;
   onUpdateCamera: (camera: Camera) => void;
   onDeleteCamera: (id: string) => void;
+  cameraToEdit?: Camera | null;
+  onClearEditCamera?: () => void;
 }
 
 export default function AdminPanel({
@@ -20,6 +22,8 @@ export default function AdminPanel({
   onAddCamera,
   onUpdateCamera,
   onDeleteCamera,
+  cameraToEdit = null,
+  onClearEditCamera,
 }: AdminPanelProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -75,6 +79,12 @@ export default function AdminPanel({
       fetchUsers();
     }
   }, [isAdmin]);
+
+  React.useEffect(() => {
+    if (isAdmin && cameraToEdit) {
+      startEdit(cameraToEdit);
+    }
+  }, [isAdmin, cameraToEdit]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,6 +310,9 @@ export default function AdminPanel({
     setOnvifPass("");
     setScanStatus("idle");
     setScanSteps([]);
+    if (onClearEditCamera) {
+      onClearEditCamera();
+    }
   };
 
   const startEdit = (cam: Camera) => {
