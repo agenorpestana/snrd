@@ -152,13 +152,8 @@ export default function CameraPlayer({
       {/* 1. SURVEILLANCE VIEWPORT */}
       <div className="relative aspect-video bg-slate-950 overflow-hidden select-none">
         
-        {/* Real video container with pan tilt zoom transitions */}
-        <div 
-          className="absolute inset-0 w-full h-full transition-transform duration-500 ease-out origin-center"
-          style={{
-            transform: `scale(${effectiveZoom}) translate(${translateX}%, ${translateY}%)`
-          }}
-        >
+        {/* Real video container with normal layout and no zoom clipping */}
+        <div className="absolute inset-0 w-full h-full">
           {simulatedMode ? (
             /* Secure automatic fallback: play the beautiful high-quality live video simulation matching each location */
             <div className="w-full h-full relative">
