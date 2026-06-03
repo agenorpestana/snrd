@@ -147,7 +147,7 @@ export default function CameraPlayer({
             transform: `scale(${zoomScale}) translate(${panOffset * 0.3}px, ${-tiltOffset * 0.3}px)`
           }}
         >
-          {isRtsp || streamOffline || simulatedMode ? (
+          {simulatedMode ? (
             /* Secure automatic fallback: play the beautiful high-quality live video simulation matching each location */
             <div className="w-full h-full relative">
               <video
@@ -159,19 +159,71 @@ export default function CameraPlayer({
                 className="w-full h-full object-cover animate-fade-in"
                 style={{ filter: "contrast(1.05) brightness(0.95)" }}
               />
+              {/* Overlay info for active simulation with option to return to live stream */}
+              <div className="absolute inset-x-0 bottom-4 flex justify-center px-4 select-none pointer-events-auto z-10 animate-fade-in">
+                <div className="bg-slate-950/90 backdrop-blur-md border border-emerald-500/30 rounded-lg py-1 px-3 text-center shadow-lg flex items-center justify-between gap-3">
+                  <span className="text-[9.5px] text-emerald-400 font-semibold flex items-center gap-1.5 font-sans">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Modo Demonstrativo Ativo
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSimulatedMode(false);
+                      setStreamOffline(false);
+                    }}
+                    className="bg-[#00A767] hover:bg-[#009055] text-black font-extrabold text-[9px] py-1 px-2.5 rounded transition-colors cursor-pointer uppercase tracking-wider"
+                  >
+                    Tentar Sinal Real
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             /* Real-time streaming from Express transcode channel (RTSP Bypass for web-compatible feeds) */
             <div className="w-full h-full relative bg-slate-950 flex items-center justify-center">
-              <img
-                src={`/api/cameras/${camera.id}/stream`}
-                alt={camera.name}
-                className="w-full h-full object-cover animate-fade-in"
-                referrerPolicy="no-referrer"
-                onError={() => {
-                  setStreamOffline(true);
-                }}
-              />
+              {!streamOffline ? (
+                <img
+                  src={`/api/cameras/${camera.id}/stream`}
+                  alt={camera.name}
+                  className="w-full h-full object-cover animate-fade-in"
+                  referrerPolicy="no-referrer"
+                  onError={() => {
+                    setStreamOffline(true);
+                  }}
+                />
+              ) : (
+                <div className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-4 text-center z-10 select-text">
+                  <div className="h-8 w-8 rounded-full bg-red-950 border border-red-500/45 flex items-center justify-center mb-1.5 animate-pulse select-none">
+                    <span className="h-2 w-2 bg-red-500 rounded-full"></span>
+                  </div>
+                  <p className="text-[10.5px] font-bold text-red-500 font-mono tracking-wider uppercase">Câmera Offline</p>
+                  <p className="text-[9px] text-slate-300 mt-1 max-w-[280px]">
+                    Não foi possível conectar ao endereço <code className="bg-slate-900 px-1 py-0.5 rounded font-mono text-[8.5px] text-slate-100">{camera.streamUrl}</code> via servidor central.
+                  </p>
+                  <div className="flex gap-2 mt-3 select-none">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStreamOffline(false);
+                      }}
+                      className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-white font-bold text-[9px] py-1 px-2.5 rounded transition-all cursor-pointer shadow-sm"
+                    >
+                      Reconectar
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSimulatedMode(true);
+                        setStreamOffline(false);
+                      }}
+                      className="bg-[#00A767] hover:bg-[#009055] text-black font-extrabold text-[9px] py-1 px-2.5 rounded transition-all cursor-pointer shadow-sm"
+                    >
+                      Demonstração
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

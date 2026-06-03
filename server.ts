@@ -591,8 +591,9 @@ async function startServer() {
 
     // Set standard boundary headers for server-push MJPEG
     res.writeHead(200, {
-      "Content-Type": "multipart/x-mixed-replace; boundary=--frame",
+      "Content-Type": "multipart/x-mixed-replace; boundary=frame",
       "Cache-Control": "no-cache, no-store, must-revalidate",
+      "X-Accel-Buffering": "no", // Disable Nginx/Proxy buffering so stream frames deliver instantly
       "Connection": "keep-alive",
       "Pragma": "no-cache",
       "Expires": "0"
@@ -601,10 +602,11 @@ async function startServer() {
     console.log(`[RTSP Stream] Inicializando codec ffmpeg de bypass de vídeo para: ${camera.name} (${streamUrl})`);
 
     // Build perfect arguments to transcode RTSP feed dynamically to Motion JPEG
+    // Uses scale=1024:-2 to ensure calculated height is divisible by 2 to prevent silent vertical scale crashes
     const ffmpegArgs = [
       "-rtsp_transport", "tcp", // Force stable connection over TCP instead of UDP packets Loss
       "-i", streamUrl,
-      "-vf", "scale=1024:-1", // Downscale to 1024 width maintaining aspect ratio for optimal web transfer
+      "-vf", "scale=1024:-2", // Downscale to 1024 width and even height maintaining aspect ratio
       "-q:v", "6", // Balance of details and low latency transport
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
@@ -617,14 +619,14 @@ async function startServer() {
     let buffer = Buffer.alloc(0);
     let hasSentData = false;
 
-    // Timeout safety: if ffmpeg does not output any video frames within 5 seconds, close stream
+    // Timeout safety: if ffmpeg does not output any video frames within 10 seconds, close stream
     const streamTimeout = setTimeout(() => {
       if (!hasSentData) {
-        console.warn(`[RTSP Stream] Timeout de conexão (5s) da câmera ${id}. Sem quadros recebidos.`);
+        console.warn(`[RTSP Stream] Timeout de conexão (10s) da câmera ${id}. Sem quadros recebidos.`);
         ffmpeg.kill("SIGKILL");
         res.end();
       }
-    }, 5000);
+    }, 10000);
 
     ffmpeg.stdout.on("data", (chunk) => {
       if (!hasSentData) {
