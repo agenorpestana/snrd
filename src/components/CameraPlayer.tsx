@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, WeatherInfo } from "../types";
-import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw, Camera as CameraIcon, Maximize, Minimize } from "lucide-react";
+import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw, Camera as CameraIcon, Maximize, Minimize, Wind, Droplet } from "lucide-react";
 
 interface CameraPlayerProps {
   camera: Camera;
@@ -175,6 +175,13 @@ export default function CameraPlayer({
       return <CloudLightning className="h-6 w-6 text-purple-400 animate-pulse" />;
     }
     return <Cloud className="h-6 w-6 text-slate-400" />;
+  };
+
+  const getWindDirectionCardinal = (deg: number | undefined): string => {
+    if (deg === undefined) return "N/D";
+    const index = Math.round(((deg % 360) / 45)) % 8;
+    const directions = ["N", "NE", "L", "SE", "S", "SO", "O", "NO"];
+    return `${directions[index]} (${deg}°)`;
   };
 
   // Convert PTZ state values to style translation offsets for simulated live preview panning!
@@ -365,6 +372,24 @@ export default function CameraPlayer({
             </div>
           )}
         </div>
+
+        {weather && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[10.5px] text-slate-400 border-t border-slate-900/50 pt-2.5 font-sans">
+            <div className="flex items-center gap-1.5 bg-slate-950/25 px-2 py-1 rounded border border-slate-900/30">
+              <Wind className="h-3 w-3 text-sky-400 animate-spin-slow" style={{ animationDuration: '8s' }} />
+              <span>Vento: <strong className="text-slate-200">{weather.windSpeed} km/h</strong></span>
+              {weather.windDirection !== undefined && (
+                <span className="text-slate-400 bg-slate-900/60 px-1 py-0.5 rounded font-mono text-[9px] font-semibold">
+                  {getWindDirectionCardinal(weather.windDirection)}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 bg-slate-950/25 px-2 py-1 rounded border border-slate-900/30">
+              <Droplet className="h-3 w-3 text-cyan-400" />
+              <span>Umidade: <strong className="text-slate-200">{weather.humidity}%</strong></span>
+            </div>
+          </div>
+        )}
 
         {/* Complete autodiscovery details row under stream card */}
         <p className="text-[11.5px] text-slate-300 mt-3 font-sans leading-relaxed">

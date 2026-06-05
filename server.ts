@@ -385,6 +385,7 @@ function getSimulatedWeather(city: string): any {
     description: desc,
     humidity: hum,
     windSpeed: wind,
+    windDirection: Math.floor(Math.random() * 360),
     fetchedAt: Date.now()
   };
 }
@@ -474,7 +475,7 @@ async function fetchRealWeather(city: string): Promise<any | null> {
     const { latitude, longitude, name: formattedName, admin1 } = geoData.results[0];
     console.log(`[Weather API] Encontrado: ${formattedName} (Região: ${admin1 || "N/A"}) - Coordenadas: (${latitude}, ${longitude})`);
 
-    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto`;
+    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;
     const forecastRes = await fetch(forecastUrl, { signal: AbortSignal.timeout(4000) });
     if (!forecastRes.ok) {
       console.warn(`[Weather API] Falha na resposta meteorológica Open-Meteo: status ${forecastRes.status}`);
@@ -491,6 +492,7 @@ async function fetchRealWeather(city: string): Promise<any | null> {
     const temp = Math.round(current.temperature_2m);
     const humidity = Math.round(current.relative_humidity_2m);
     const windSpeed = Math.round(current.wind_speed_10m);
+    const windDirection = current.wind_direction_10m !== undefined ? Math.round(current.wind_direction_10m) : 0;
     const weatherCode = Number(current.weather_code);
 
     // Map weather codes to friendly descriptions and conditions in Portuguese
@@ -544,6 +546,7 @@ async function fetchRealWeather(city: string): Promise<any | null> {
       description,
       humidity,
       windSpeed,
+      windDirection,
       fetchedAt: Date.now()
     };
   } catch (err: any) {
