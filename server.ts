@@ -371,16 +371,10 @@ function getSimulatedWeather(city: string): any {
     wind = 15;
   }
 
-  // Add a small pseudo-random variation based on the current hour to look dynamic
-  const date = new Date();
-  const hour = date.getHours();
-  const minute = date.getMinutes();
-  const shift = ((hour + minute) % 5) - 2; // -2 to +2 variation
-  const finalTemp = Math.max(0, temp + shift);
-
+  // No artificial minutes-based variation to prevent annoying fluctuations
   return {
     city: String(city),
-    temp: finalTemp,
+    temp,
     condition,
     description: desc,
     humidity: hum,
@@ -396,84 +390,111 @@ async function fetchRealWeather(city: string): Promise<any | null> {
     let trimmedCity = String(city).trim();
     if (!trimmedCity) return null;
 
-    // Normalize simple default values to prevent international overlaps (e.g. Joinville in France)
-    const lower = trimmedCity.toLowerCase();
-    if (lower === "joinville") {
-      trimmedCity = "Joinville, SC";
-    } else if (lower === "rio de janeiro" || lower === "rio") {
-      trimmedCity = "Rio de Janeiro, RJ";
-    } else if (lower === "são paulo" || lower === "sao paulo") {
-      trimmedCity = "São Paulo, SP";
-    }
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    let formattedName = trimmedCity;
+    let admin1 = "";
 
-    // Split e.g. "Joinville, SC" to map state abbr to full name for the search query representation
-    let searchQuery = trimmedCity;
-    const parts = trimmedCity.split(/,\s*/);
-    const UF_MAP: Record<string, string> = {
-      "AC": "Acre", "AL": "Alagoas", "AP": "Amapá", "AM": "Amazonas", "BA": "Bahia",
-      "CE": "Ceará", "DF": "Distrito Federal", "ES": "Espírito Santo", "GO": "Goiás",
-      "MA": "Maranhão", "MT": "Mato Grosso", "MS": "Mato Grosso do Sul", "MG": "Minas Gerais",
-      "PA": "Pará", "PB": "Paraíba", "PR": "Paraná", "PE": "Pernambuco", "PI": "Piauí",
-      "RJ": "Rio de Janeiro", "RN": "Rio Grande do Norte", "RS": "Rio Grande do Sul",
-      "RO": "Rondônia", "RR": "Roraima", "SC": "Santa Catarina", "SP": "São Paulo",
-      "SE": "Sergipe", "TO": "Tocantins"
-    };
+    // 1. Detect if the city string contains coordinates (e.g., -17.3326, -39.2308)
+    const coordRegex = /(-?\d+\.\d+)[,\s/]+(-?\d+\.\d+)/;
+    const coordMatch = trimmedCity.match(coordRegex);
 
-    if (parts.length > 1) {
-      const cityName = parts[0].trim();
-      const stateAbbr = parts[1].trim().toUpperCase();
-      if (UF_MAP[stateAbbr]) {
-        searchQuery = `${cityName}, ${UF_MAP[stateAbbr]}, Brasil`;
+    if (coordMatch) {
+      latitude = parseFloat(coordMatch[1]);
+      longitude = parseFloat(coordMatch[2]);
+      console.log(`[Weather API] Coordenadas detectadas diretamente na string da cidade: (${latitude}, ${longitude})`);
+      
+      // Try to extract a clean textual name before the coordinates if present, e.g. "Prado, BA (-17.3326, -39.2308)" -> "Prado, BA"
+      const namePart = trimmedCity.split('(')[0].trim();
+      if (namePart && namePart !== `${latitude},${longitude}` && namePart !== `${latitude}, ${longitude}`) {
+        formattedName = namePart;
       } else {
-        searchQuery = `${cityName}, ${stateAbbr}, Brasil`;
+        formattedName = "Localização Geográfica";
+        admin1 = `${latitude}, ${longitude}`;
       }
     } else {
-      const words = trimmedCity.split(/\s+/);
-      if (words.length > 1) {
-        const lastWord = words[words.length - 1].toUpperCase();
-        if (UF_MAP[lastWord]) {
-          const cityName = words.slice(0, words.length - 1).join(" ");
-          searchQuery = `${cityName}, ${UF_MAP[lastWord]}, Brasil`;
+      // Normalize simple default values to prevent international overlaps (e.g. Joinville in France)
+      const lower = trimmedCity.toLowerCase();
+      if (lower === "joinville") {
+        trimmedCity = "Joinville, SC";
+      } else if (lower === "rio de janeiro" || lower === "rio") {
+        trimmedCity = "Rio de Janeiro, RJ";
+      } else if (lower === "são paulo" || lower === "sao paulo") {
+        trimmedCity = "São Paulo, SP";
+      }
+
+      // Split e.g. "Joinville, SC" to map state abbr to full name for the search query representation
+      let searchQuery = trimmedCity;
+      const parts = trimmedCity.split(/,\s*/);
+      const UF_MAP: Record<string, string> = {
+        "AC": "Acre", "AL": "Alagoas", "AP": "Amapá", "AM": "Amazonas", "BA": "Bahia",
+        "CE": "Ceará", "DF": "Distrito Federal", "ES": "Espírito Santo", "GO": "Goiás",
+        "MA": "Maranhão", "MT": "Mato Grosso", "MS": "Mato Grosso do Sul", "MG": "Minas Gerais",
+        "PA": "Pará", "PB": "Paraíba", "PR": "Paraná", "PE": "Pernambuco", "PI": "Piauí",
+        "RJ": "Rio de Janeiro", "RN": "Rio Grande do Norte", "RS": "Rio Grande do Sul",
+        "RO": "Rondônia", "RR": "Roraima", "SC": "Santa Catarina", "SP": "São Paulo",
+        "SE": "Sergipe", "TO": "Tocantins"
+      };
+
+      if (parts.length > 1) {
+        const cityName = parts[0].trim();
+        const stateAbbr = parts[1].trim().toUpperCase();
+        if (UF_MAP[stateAbbr]) {
+          searchQuery = `${cityName}, ${UF_MAP[stateAbbr]}, Brasil`;
+        } else {
+          searchQuery = `${cityName}, ${stateAbbr}, Brasil`;
         }
       } else {
-        searchQuery = `${trimmedCity}, Brasil`;
-      }
-    }
-
-    console.log(`[Weather API] Consultando geocodificação Open-Meteo para: "${searchQuery}" (original: "${trimmedCity}")`);
-    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=1&language=pt`;
-    
-    let geoRes = await fetch(geoUrl, { signal: AbortSignal.timeout(4000) });
-    let geoData: any = null;
-    if (geoRes.ok) {
-      geoData = await geoRes.json();
-    }
-
-    if (!geoData || !geoData.results || geoData.results.length === 0) {
-      console.warn(`[Weather API] Nenhuma correspondência direta para "${searchQuery}". Tentando busca secundária por: "${trimmedCity}"`);
-      const fallbackGeoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmedCity)}&count=5&language=pt`;
-      const fallbackRes = await fetch(fallbackGeoUrl, { signal: AbortSignal.timeout(4000) });
-      if (fallbackRes.ok) {
-        const fallbackData = await fallbackRes.json();
-        if (fallbackData && fallbackData.results && fallbackData.results.length > 0) {
-          // Prioritize Brazil results
-          const brResult = fallbackData.results.find((r: any) => 
-            String(r.country).toLowerCase().includes("brazil") || 
-            String(r.country).toLowerCase().includes("brasil") ||
-            (r.country_code && String(r.country_code).toLowerCase() === "br")
-          );
-          geoData = { results: [brResult || fallbackData.results[0]] };
+        const words = trimmedCity.split(/\s+/);
+        if (words.length > 1) {
+          const lastWord = words[words.length - 1].toUpperCase();
+          if (UF_MAP[lastWord]) {
+            const cityName = words.slice(0, words.length - 1).join(" ");
+            searchQuery = `${cityName}, ${UF_MAP[lastWord]}, Brasil`;
+          }
+        } else {
+          searchQuery = `${trimmedCity}, Brasil`;
         }
       }
-    }
 
-    if (!geoData || !geoData.results || geoData.results.length === 0) {
-      console.warn(`[Weather API] Nenhuma correspondência encontrada no Open-Meteo para: "${trimmedCity}"`);
-      return null;
-    }
+      console.log(`[Weather API] Consultando geocodificação Open-Meteo para: "${searchQuery}" (original: "${trimmedCity}")`);
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchQuery)}&count=1&language=pt`;
+      
+      let geoRes = await fetch(geoUrl, { signal: AbortSignal.timeout(4000) });
+      let geoData: any = null;
+      if (geoRes.ok) {
+        geoData = await geoRes.json();
+      }
 
-    const { latitude, longitude, name: formattedName, admin1 } = geoData.results[0];
-    console.log(`[Weather API] Encontrado: ${formattedName} (Região: ${admin1 || "N/A"}) - Coordenadas: (${latitude}, ${longitude})`);
+      if (!geoData || !geoData.results || geoData.results.length === 0) {
+        console.warn(`[Weather API] Nenhuma correspondência direta para "${searchQuery}". Tentando busca secundária por: "${trimmedCity}"`);
+        const fallbackGeoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmedCity)}&count=5&language=pt`;
+        const fallbackRes = await fetch(fallbackGeoUrl, { signal: AbortSignal.timeout(4000) });
+        if (fallbackRes.ok) {
+          const fallbackData = await fallbackRes.json();
+          if (fallbackData && fallbackData.results && fallbackData.results.length > 0) {
+            // Prioritize Brazil results
+            const brResult = fallbackData.results.find((r: any) => 
+              String(r.country).toLowerCase().includes("brazil") || 
+              String(r.country).toLowerCase().includes("brasil") ||
+              (r.country_code && String(r.country_code).toLowerCase() === "br")
+            );
+            geoData = { results: [brResult || fallbackData.results[0]] };
+          }
+        }
+      }
+
+      if (!geoData || !geoData.results || geoData.results.length === 0) {
+        console.warn(`[Weather API] Nenhuma correspondência encontrada no Open-Meteo para: "${trimmedCity}"`);
+        return null;
+      }
+
+      latitude = geoData.results[0].latitude;
+      longitude = geoData.results[0].longitude;
+      formattedName = geoData.results[0].name;
+      admin1 = geoData.results[0].admin1;
+      console.log(`[Weather API] Encontrado: ${formattedName} (Região: ${admin1 || "N/A"}) - Coordenadas: (${latitude}, ${longitude})`);
+    }
 
     const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;
     const forecastRes = await fetch(forecastUrl, { signal: AbortSignal.timeout(4000) });
