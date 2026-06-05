@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, WeatherInfo } from "../types";
 import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw, Camera as CameraIcon, Maximize, Minimize } from "lucide-react";
 
@@ -97,7 +97,7 @@ export default function CameraPlayer({
   }, []);
 
   // Fetch weather forecast of the specific city associated with the camera
-  const fetchWeather = async () => {
+  const fetchWeather = useCallback(async () => {
     if (!camera.city) return;
     setLoadingWeather(true);
     setWeatherError("");
@@ -112,11 +112,11 @@ export default function CameraPlayer({
     } finally {
       setLoadingWeather(false);
     }
-  };
+  }, [camera.city]);
 
   useEffect(() => {
     fetchWeather();
-  }, [camera.city]);
+  }, [fetchWeather]);
 
   // Reset offline state whenever stream location changes to always evaluate newly input streams
   useEffect(() => {
@@ -125,6 +125,28 @@ export default function CameraPlayer({
     setRetryCount(0);
     setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
   }, [camera.streamUrl, camera.id]);
+
+  // Reconnect automatically when the user returns/focuses back to the tab/window
+  useEffect(() => {
+    const handleVisibilityAndFocus = () => {
+      if (document.visibilityState === "visible") {
+        console.log(`[CameraPlayer] Tab/Janela visível. Recarregando transmissão para: ${camera.name}`);
+        setStreamOffline(false);
+        setSimulatedMode(false);
+        setRetryCount(0);
+        setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
+        fetchWeather();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityAndFocus);
+    window.addEventListener("focus", handleVisibilityAndFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityAndFocus);
+      window.removeEventListener("focus", handleVisibilityAndFocus);
+    };
+  }, [camera.id, camera.name, fetchWeather]);
 
   const handleImageError = () => {
     if (retryCount < 4) {
@@ -267,8 +289,8 @@ export default function CameraPlayer({
                     <span className="h-2 w-2 bg-red-500 rounded-full"></span>
                   </div>
                   <p className="text-[10.5px] font-bold text-red-500 font-mono tracking-wider uppercase">Câmera Offline</p>
-                  <p className="text-[9px] text-slate-300 mt-1 max-w-[280px]">
-                    Não foi possível conectar ao endereço <code className="bg-slate-900 px-1 py-0.5 rounded font-mono text-[8.5px] text-slate-100">{camera.streamUrl}</code> via servidor central.
+                  <p className="text-[9px] text-slate-400 mt-1 max-w-[280px]">
+                    Não foi possível estabelecer conexão com o dispositivo de captura.
                   </p>
                   <div className="flex gap-2 mt-3 select-none">
                     <button
