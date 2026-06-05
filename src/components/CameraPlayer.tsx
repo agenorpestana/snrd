@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Camera, WeatherInfo } from "../types";
-import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw, Camera as CameraIcon } from "lucide-react";
+import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw, Camera as CameraIcon, Maximize, Minimize } from "lucide-react";
 
 interface CameraPlayerProps {
   camera: Camera;
@@ -27,6 +27,55 @@ export default function CameraPlayer({
   const [simulatedMode, setSimulatedMode] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [streamUrlWithBuster, setStreamUrlWithBuster] = useState(`/api/cameras/${camera.id}/stream`);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const element = containerRef.current;
+    if (!element) return;
+
+    if (!document.fullscreenElement) {
+      if (element.requestFullscreen) {
+        element.requestFullscreen();
+      } else if ((element as any).webkitRequestFullscreen) {
+        (element as any).webkitRequestFullscreen();
+      } else if ((element as any).mozRequestFullScreen) {
+        (element as any).mozRequestFullScreen();
+      } else if ((element as any).msRequestFullscreen) {
+        (element as any).msRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen();
+      } else if ((document as any).mozCancelFullScreen) {
+        (document as any).mozCancelFullScreen();
+      } else if ((document as any).msExitFullscreen) {
+        (document as any).msExitFullscreen();
+      }
+    }
+  };
 
   // Dynamic ticking clock for surveillance overlay
   useEffect(() => {
@@ -165,7 +214,7 @@ export default function CameraPlayer({
       }`}
     >
       {/* 1. SURVEILLANCE VIEWPORT */}
-      <div className="relative aspect-video bg-slate-950 overflow-hidden select-none">
+      <div ref={containerRef} className="relative aspect-video bg-slate-950 overflow-hidden select-none">
         
         {/* Real video container with normal layout and no zoom clipping */}
         <div className="absolute inset-0 w-full h-full">
@@ -246,6 +295,22 @@ export default function CameraPlayer({
               )}
             </div>
           )}
+        </div>
+
+        {/* Absolute positioned floating fullscreen toggle button on hover */}
+        <div className="absolute top-3 right-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-auto">
+          <button
+            id={`fullscreen-toggle-${camera.id}`}
+            onClick={toggleFullscreen}
+            className="p-1.5 rounded-lg bg-black/75 hover:bg-[#00A767] border border-slate-800 hover:border-[#008d55] text-slate-350 hover:text-black transition-all cursor-pointer shadow-md flex items-center justify-center"
+            title={isFullscreen ? "Sair da Tela Inteira" : "Abrir em Tela Inteira"}
+          >
+            {isFullscreen ? (
+              <Minimize className="h-4 w-4" />
+            ) : (
+              <Maximize className="h-4 w-4" />
+            )}
+          </button>
         </div>
 
         {/* On-screen overlays removed for uncluttered display */}

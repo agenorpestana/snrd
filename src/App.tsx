@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Header from "./components/Header";
 import CameraPlayer from "./components/CameraPlayer";
-import PtzControl from "./components/PtzControl";
 import AdminPanel from "./components/AdminPanel";
 import { Camera } from "./types";
 import { ShieldCheck, Video, LayoutGrid, Tv, Database, Radio, Sparkles, Server, RefreshCw } from "lucide-react";
@@ -126,10 +125,10 @@ export default function App(): React.JSX.Element {
           </div>
         ) : activeView === "live" ? (
           /* PUBLIC WATCH BOARD */
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          <div className="space-y-5 animate-fade-in">
             
-            {/* LEFT SECTION (GRID OR THEATER STREAM VIEW) */}
-            <div className="col-span-1 lg:col-span-2 space-y-5">
+            {/* GRID OR THEATER STREAM VIEW */}
+            <div className="space-y-5">
               
               {/* Sector Title indicator */}
               <div className="flex items-center justify-between bg-[#101c1f]/50 px-4 py-2.5 rounded-lg border border-slate-800 backdrop-blur-sm select-none">
@@ -220,14 +219,6 @@ export default function App(): React.JSX.Element {
                   )}
                 </div>
               )}
-            </div>
-
-            {/* RIGHT SECTION: PTZ DIRECTIONS & CONSOLE TELEMETRY */}
-            <div className="space-y-6">
-              <PtzControl
-                selectedCamera={selectedCamera}
-                onPtzChange={handleUpdateCamera}
-              />
             </div>
           </div>
         ) : (

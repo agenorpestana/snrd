@@ -36,6 +36,10 @@ export default function AdminPanel({
   const [name, setName] = useState("");
   const [streamUrl, setStreamUrl] = useState("");
   const [city, setCity] = useState("Joinville");
+  const [states, setStates] = useState<{ sigla: string; nome: string }[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [selectedState, setSelectedState] = useState("SC");
+  const [loadingCities, setLoadingCities] = useState(false);
   const [description, setDescription] = useState("");
   const [isPtzCompatible, setIsPtzCompatible] = useState(true);
   
@@ -73,6 +77,77 @@ export default function AdminPanel({
       console.error("Erro ao carregar usuários:", err);
     }
   };
+
+  React.useEffect(() => {
+    const fetchStates = async () => {
+      try {
+        const res = await fetch("https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome");
+        if (res.ok) {
+          const data = await res.json();
+          const list = data.map((item: any) => ({
+            sigla: item.sigla,
+            nome: item.nome
+          }));
+          setStates(list);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar estados do IBGE:", err);
+        setStates([
+          { sigla: "AC", nome: "Acre" },
+          { sigla: "AL", nome: "Alagoas" },
+          { sigla: "AP", nome: "Amapá" },
+          { sigla: "AM", nome: "Amazonas" },
+          { sigla: "BA", nome: "Bahia" },
+          { sigla: "CE", nome: "Ceará" },
+          { sigla: "DF", nome: "Distrito Federal" },
+          { sigla: "ES", nome: "Espírito Santo" },
+          { sigla: "GO", nome: "Goiás" },
+          { sigla: "MA", nome: "Maranhão" },
+          { sigla: "MT", nome: "Mato Grosso" },
+          { sigla: "MS", nome: "Mato Grosso do Sul" },
+          { sigla: "MG", nome: "Minas Gerais" },
+          { sigla: "PA", nome: "Pará" },
+          { sigla: "PB", nome: "Paraíba" },
+          { sigla: "PR", nome: "Paraná" },
+          { sigla: "PE", nome: "Pernambuco" },
+          { sigla: "PI", nome: "Piauí" },
+          { sigla: "RJ", nome: "Rio de Janeiro" },
+          { sigla: "RN", nome: "Rio Grande do Norte" },
+          { sigla: "RS", nome: "Rio Grande do Sul" },
+          { sigla: "RO", nome: "Rondônia" },
+          { sigla: "RR", nome: "Roraima" },
+          { sigla: "SC", nome: "Santa Catarina" },
+          { sigla: "SP", nome: "São Paulo" },
+          { sigla: "SE", nome: "Sergipe" },
+          { sigla: "TO", nome: "Tocantins" },
+        ]);
+      }
+    };
+    fetchStates();
+  }, []);
+
+  React.useEffect(() => {
+    if (!selectedState) {
+      setCities([]);
+      return;
+    }
+    const fetchCities = async () => {
+      setLoadingCities(true);
+      try {
+        const res = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${selectedState}/municipios?orderBy=nome`);
+        if (res.ok) {
+          const data = await res.json();
+          const list = data.map((item: any) => item.nome);
+          setCities(list);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar cidades do IBGE:", err);
+      } finally {
+        setLoadingCities(false);
+      }
+    };
+    fetchCities();
+  }, [selectedState]);
 
   React.useEffect(() => {
     if (isAdmin) {
@@ -246,14 +321,16 @@ export default function AdminPanel({
   const handleCameraSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !streamUrl || !city) {
-      alert("Nome, link de stream e cidade de monitoramento são obrigatórios.");
+      alert("Nome, link de stream, estado e cidade de monitoramento são obrigatórios.");
       return;
     }
+
+    const finalCity = selectedState ? `${city.trim()}, ${selectedState}` : city.trim();
 
     const payload = {
       name,
       streamUrl,
-      city,
+      city: finalCity,
       description,
       isPtzCompatible,
       onvifIp: onvifIp || undefined,
@@ -302,6 +379,8 @@ export default function AdminPanel({
     setEditId(null);
     setName("");
     setStreamUrl("");
+    setCity("Joinville");
+    setSelectedState("SC");
     setDescription("");
     setIsPtzCompatible(true);
     setOnvifIp("");
@@ -320,7 +399,17 @@ export default function AdminPanel({
     setEditId(cam.id);
     setName(cam.name);
     setStreamUrl(cam.streamUrl);
-    setCity(cam.city);
+    
+    // Parse combined city-state format, e.g., "Joinville, SC"
+    const parts = cam.city.split(/,\s*/);
+    if (parts.length > 1) {
+      setCity(parts[0].trim());
+      setSelectedState(parts[1].trim().toUpperCase());
+    } else {
+      setCity(cam.city.trim());
+      setSelectedState("");
+    }
+
     setDescription(cam.description);
     setIsPtzCompatible(cam.isPtzCompatible);
     setOnvifIp(cam.onvifIp || "");
@@ -586,30 +675,70 @@ export default function AdminPanel({
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div className="space-y-1">
-                    <label htmlFor="cam-city-field" className="text-xs text-slate-300 font-medium">Cidade (Previsão do Tempo):</label>
-                    <input
-                      id="cam-city-field"
-                      type="text"
+                    <label htmlFor="cam-state-select" className="text-xs text-slate-300 font-medium">Estado (UF):</label>
+                    <select
+                      id="cam-state-select"
+                      value={selectedState}
+                      onChange={(e) => {
+                        setSelectedState(e.target.value);
+                        setCity(""); // Reset when state changes
+                      }}
+                      className="w-full bg-[#1c2c31] border border-slate-850 px-3 py-2 rounded-lg text-slate-150 focus:outline-none focus:border-[#00A767]"
+                    >
+                      <option value="">Selecione...</option>
+                      {states.map((st) => (
+                        <option key={st.sigla} value={st.sigla}>
+                          {st.nome} ({st.sigla})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="cam-city-select" className="text-xs text-slate-300 font-medium flex items-center justify-between">
+                      <span>Cidade:</span>
+                      {loadingCities && <span className="text-[9px] text-emerald-400 animate-pulse">Carregando...</span>}
+                    </label>
+                    <select
+                      id="cam-city-select"
                       required
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
-                      placeholder="Ex: Joinville"
-                      className="w-full bg-[#1c2c31] border border-slate-850 px-3 py-2 rounded-lg text-slate-150 focus:outline-none focus:border-[#00A767]"
-                    />
+                      disabled={loadingCities || !selectedState}
+                      className="w-full bg-[#1c2c31] border border-slate-850 px-3 py-2 rounded-lg text-slate-150 focus:outline-none focus:border-[#00A767] disabled:opacity-50"
+                    >
+                      <option value="">
+                        {!selectedState ? "Escolha um Estado" : "Selecione..."}
+                      </option>
+                      {cities.length > 0 ? (
+                        <>
+                          {city && !cities.includes(city) && (
+                            <option value={city}>{city}</option>
+                          )}
+                          {cities.map((ct) => (
+                            <option key={ct} value={ct}>
+                              {ct}
+                            </option>
+                          ))}
+                        </>
+                      ) : (
+                        city && <option value={city}>{city}</option>
+                      )}
+                    </select>
                   </div>
+                </div>
 
-                  <div className="flex items-center pt-5 pl-2">
-                    <input
-                      id="cam-ptz-field"
-                      type="checkbox"
-                      checked={isPtzCompatible}
-                      onChange={(e) => setIsPtzCompatible(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-800 text-[#00A767] focus:ring-0 focus:ring-offset-0 ring-[#00A767] accent-[#00A767]"
-                    />
-                    <label htmlFor="cam-ptz-field" className="ml-2 text-xs text-slate-300 font-medium cursor-pointer">
-                      Habilitar Controle PTZ
-                    </label>
-                  </div>
+                <div className="flex items-center pt-1 pl-1">
+                  <input
+                    id="cam-ptz-field"
+                    type="checkbox"
+                    checked={isPtzCompatible}
+                    onChange={(e) => setIsPtzCompatible(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-800 text-[#00A767] focus:ring-0 focus:ring-offset-0 ring-[#00A767] accent-[#00A767] cursor-pointer"
+                  />
+                  <label htmlFor="cam-ptz-field" className="ml-2 text-xs text-slate-300 font-medium cursor-pointer">
+                    Habilitar Controle PTZ
+                  </label>
                 </div>
 
                 <div className="space-y-1">

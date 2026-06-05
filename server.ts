@@ -20,7 +20,7 @@ const DEFAULT_CAMERAS = [
     id: "cam-1",
     name: "Pista Principal - VIPW SNRD",
     streamUrl: "rtsp://admin:intelbras123@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0",
-    city: "Joinville",
+    city: "Joinville, SC",
     description: "Portaria Principal - Vista panorâmica da pista de pouso (VIPW-1300-MINI-SD). Monitoramento de pousos, decolagens e área perimetral.",
     onvifIp: "192.168.1.108",
     onvifPort: 80,
@@ -40,7 +40,7 @@ const DEFAULT_CAMERAS = [
     id: "cam-2",
     name: "Área Externa - Copacabana",
     streamUrl: "rtsp://admin:copa2026@192.168.1.150:554/live/ch1",
-    city: "Rio de Janeiro",
+    city: "Rio de Janeiro, RJ",
     description: "Monitoramento de fluxo de pessoas e condições do mar na praia de Copacabana.",
     onvifIp: "192.168.1.150",
     onvifPort: 80,
@@ -60,7 +60,7 @@ const DEFAULT_CAMERAS = [
     id: "cam-3",
     name: "Pátio Interno - Escritório Central",
     streamUrl: "rtsp://admin:office789@192.168.0.222:554/mpeg4",
-    city: "São Paulo",
+    city: "São Paulo, SP",
     description: "Vista de entrada interna do pátio operacional e estacionamento de veículos de servidores.",
     onvifIp: "192.168.0.222",
     onvifPort: 80,
@@ -385,8 +385,18 @@ function getSimulatedWeather(city: string): any {
 // Fetch real-time weather information from Open-Meteo (fully online and dynamic)
 async function fetchRealWeather(city: string): Promise<any | null> {
   try {
-    const trimmedCity = String(city).trim();
+    let trimmedCity = String(city).trim();
     if (!trimmedCity) return null;
+
+    // Normalize simple default values to prevent international overlaps (e.g. Joinville in France)
+    const lower = trimmedCity.toLowerCase();
+    if (lower === "joinville") {
+      trimmedCity = "Joinville, SC";
+    } else if (lower === "rio de janeiro" || lower === "rio") {
+      trimmedCity = "Rio de Janeiro, RJ";
+    } else if (lower === "são paulo" || lower === "sao paulo") {
+      trimmedCity = "São Paulo, SP";
+    }
 
     console.log(`[Weather API] Consultando geocodificação Open-Meteo para: "${trimmedCity}"`);
     const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmedCity)}&count=1&language=pt`;
