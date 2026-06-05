@@ -24,15 +24,15 @@ export default function Header({
 }: HeaderProps) {
   return (
     <header className="bg-[#00A767] text-white shadow-md select-none border-b border-[#009055]">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 h-16 flex items-center justify-between">
         {/* Left Brand and Status */}
-        <div className="flex items-center space-x-3 cursor-pointer">
-          <div className="p-2 bg-white/10 rounded-lg flex items-center justify-center animate-pulse">
-            <Cctv className="h-6 w-6 text-white" />
+        <div className="flex items-center space-x-2.5 cursor-pointer">
+          <div className="p-1.5 sm:p-2 bg-white/10 rounded-lg flex items-center justify-center animate-pulse">
+            <Cctv className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-bold tracking-tight text-lg font-sans">SNRD MONITORAMENTO</span>
+              <span className="font-bold tracking-tight text-sm xs:text-base sm:text-lg font-sans">SNRD MONITORAMENTO</span>
             </div>
           </div>
         </div>
@@ -44,37 +44,37 @@ export default function Header({
         </div>
 
         {/* Right Controls */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-1.5 sm:space-x-3">
           {/* View Mode Toggle Controls */}
-          <div className="bg-emerald-800/50 p-1 rounded-lg flex items-center space-x-1 border border-emerald-700/30">
+          <div className="bg-emerald-800/50 p-0.5 sm:p-1 rounded-lg flex items-center space-x-0.5 sm:space-x-1 border border-emerald-700/30">
             <button
               id="view-grid-btn"
               onClick={() => setViewMode("grid")}
-              className={`p-1.5 rounded cursor-pointer ${
+              className={`p-1 sm:p-1.5 rounded cursor-pointer ${
                 viewMode === "grid"
                   ? "bg-[#00A767] text-white shadow-sm"
                   : "text-emerald-100 hover:text-white hover:bg-emerald-700/40"
               } transition-all`}
               title="Visualização em Grade"
             >
-              <LayoutGrid className="h-4 w-4" />
+              <LayoutGrid className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </button>
             <button
               id="view-theater-btn"
               onClick={() => setViewMode("theater")}
-              className={`p-1.5 rounded cursor-pointer ${
+              className={`p-1 sm:p-1.5 rounded cursor-pointer ${
                 viewMode === "theater"
                   ? "bg-[#00A767] text-white shadow-sm"
                   : "text-emerald-100 hover:text-white hover:bg-emerald-700/40"
               } transition-all`}
               title="Visualização em Destaque"
             >
-              <Tv className="h-4 w-4" />
+              <Tv className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </button>
           </div>
 
           {/* Admin Indicator Pin & Action button */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 sm:space-x-2">
             {isAdmin ? (
               <>
                 <div className="hidden lg:flex items-center space-x-1.5 bg-white/10 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/20">
@@ -85,19 +85,19 @@ export default function Header({
                   <button
                     id="admin-panel-return-btn"
                     onClick={onAdminViewClick}
-                    className="bg-white hover:bg-emerald-50 text-[#00A767] font-semibold text-xs px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow cursor-pointer mr-1"
+                    className="bg-white hover:bg-emerald-50 text-[#00A767] font-semibold text-[11px] sm:text-xs px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg transition-colors flex items-center gap-1 shadow cursor-pointer mr-0.5"
                   >
                     <Shield className="h-3.5 w-3.5" />
-                    <span>Painel Admin</span>
+                    <span>Painel</span>
                   </button>
                 )}
                 <button
                   id="admin-logout-btn"
                   onClick={onLogoutClick}
-                  className="bg-red-600/90 hover:bg-red-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow cursor-pointer"
+                  className="bg-red-600/90 hover:bg-red-700 text-white text-[11px] sm:text-xs font-semibold px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg transition-colors flex items-center gap-1 shadow cursor-pointer"
                 >
                   <LogOut className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Sair do Painel</span>
+                  <span className="hidden sm:inline">Sair</span>
                 </button>
               </>
             ) : (
@@ -109,10 +109,10 @@ export default function Header({
                 <button
                   id="admin-login-btn"
                   onClick={onLoginClick}
-                  className="bg-white hover:bg-emerald-50 text-[#00A767] font-semibold text-xs px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow cursor-pointer"
+                  className="bg-white hover:bg-emerald-50 text-[#00A767] font-semibold text-[11px] sm:text-xs px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg transition-colors flex items-center gap-1 shadow cursor-pointer"
                 >
                   <LogIn className="h-3.5 w-3.5" />
-                  <span>Painel Admin</span>
+                  <span>Entrar</span>
                 </button>
               </>
             )}
