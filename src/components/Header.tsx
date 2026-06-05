@@ -1,5 +1,5 @@
 import React from "react";
-import { Cctv, LogIn, LogOut, LayoutGrid, Tv, Shield, ShieldAlert, Cpu } from "lucide-react";
+import { Cctv, LogIn, LogOut, LayoutGrid, Tv, Shield, ShieldAlert } from "lucide-react";
 
 interface HeaderProps {
   isAdmin: boolean;
@@ -32,12 +32,8 @@ export default function Header({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-bold tracking-tight text-lg font-sans">SNRD</span>
+              <span className="font-bold tracking-tight text-lg font-sans">SNRD MONITORAMENTO</span>
             </div>
-            <p className="text-[10px] text-emerald-100 font-mono flex items-center gap-1">
-              <Cpu className="h-2.5 w-2.5" />
-              SISTEMA V2.4 • {activeCameraCount} DISPOSITIVOS ATIVOS
-            </p>
           </div>
         </div>
 
