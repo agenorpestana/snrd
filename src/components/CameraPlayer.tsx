@@ -29,6 +29,7 @@ export default function CameraPlayer({
   const [streamUrlWithBuster, setStreamUrlWithBuster] = useState(`/api/cameras/${camera.id}/stream`);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -131,13 +132,23 @@ export default function CameraPlayer({
     fetchWeather();
   }, [fetchWeather]);
 
-  // Reset offline state whenever stream location or selection changes to always evaluate active streams
+  // Reset offline state whenever stream location changes to always evaluate active streams
   useEffect(() => {
     setStreamOffline(false);
     setSimulatedMode(false);
     setRetryCount(0);
     setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
-  }, [camera.streamUrl, camera.id, isSelected]);
+  }, [camera.streamUrl, camera.id]);
+
+  // Force connection termination on unmount to prevent browser socket limit leaks
+  useEffect(() => {
+    return () => {
+      if (imgRef.current) {
+        console.log(`[CameraPlayer] Unmounting ${camera.name}. Closing connection explicitly.`);
+        imgRef.current.src = "";
+      }
+    };
+  }, [camera.name]);
 
   // Reconnect automatically when the user returns/focuses back to the tab/window
   useEffect(() => {
@@ -297,6 +308,7 @@ export default function CameraPlayer({
             <div className="w-full h-full relative bg-slate-950 flex items-center justify-center">
               {!streamOffline ? (
                 <img
+                  ref={imgRef}
                   src={streamUrlWithBuster}
                   alt={camera.name}
                   className="w-full h-full object-contain bg-slate-950 animate-fade-in"
