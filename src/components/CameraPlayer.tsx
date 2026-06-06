@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, WeatherInfo } from "../types";
-import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw, Camera as CameraIcon, Maximize, Minimize, Wind, Droplet } from "lucide-react";
+import { Cloud, CloudRain, Sun, CloudLightning, CloudDrizzle, Thermometer, Database, RefreshCw, Camera as CameraIcon, Maximize, Minimize, Wind, Droplet, Gauge } from "lucide-react";
 
 interface CameraPlayerProps {
   camera: Camera;
@@ -33,7 +33,20 @@ export default function CameraPlayer({
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const activeElement = document.fullscreenElement || 
+                            (document as any).webkitFullscreenElement || 
+                            (document as any).mozFullScreenElement || 
+                            (document as any).msFullscreenElement;
+      
+      setIsFullscreen(!!activeElement);
+
+      // When exiting fullscreen, reload/refresh the stream to ensure it starts fetching fresh frames again!
+      // This is crucial because standard Webkit/Gecko browsers suspend connections of background elements,
+      // resulting in permanently stalled/gray MJPEG stream buffers once fullscreen exits.
+      if (!activeElement) {
+        console.log(`[CameraPlayer] Exited fullscreen/amplified mode. Refreshing stream connection for ${camera.name}`);
+        setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
+      }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -47,7 +60,7 @@ export default function CameraPlayer({
       document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
       document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
     };
-  }, []);
+  }, [camera.id, camera.name]);
 
   const toggleFullscreen = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -118,13 +131,13 @@ export default function CameraPlayer({
     fetchWeather();
   }, [fetchWeather]);
 
-  // Reset offline state whenever stream location changes to always evaluate newly input streams
+  // Reset offline state whenever stream location or selection changes to always evaluate active streams
   useEffect(() => {
     setStreamOffline(false);
     setSimulatedMode(false);
     setRetryCount(0);
     setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
-  }, [camera.streamUrl, camera.id]);
+  }, [camera.streamUrl, camera.id, isSelected]);
 
   // Reconnect automatically when the user returns/focuses back to the tab/window
   useEffect(() => {
@@ -388,6 +401,12 @@ export default function CameraPlayer({
               <Droplet className="h-3 w-3 text-cyan-400" />
               <span>Umidade: <strong className="text-slate-200">{weather.humidity}%</strong></span>
             </div>
+            {weather.pressure !== undefined && (
+              <div className="flex items-center gap-1.5 bg-slate-950/25 px-2 py-1 rounded border border-slate-900/30">
+                <Gauge className="h-3 w-3 text-amber-400" />
+                <span>Pressão (QNH): <strong className="text-slate-200">{weather.pressure} hPa</strong></span>
+              </div>
+            )}
           </div>
         )}
 

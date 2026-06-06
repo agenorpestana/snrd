@@ -27,6 +27,7 @@ export interface WeatherInfo {
   humidity: number;
   windSpeed: number;
   windDirection?: number;
+  pressure?: number;
   icon?: string;
   fetchedAt: number;
 }

@@ -380,6 +380,7 @@ function getSimulatedWeather(city: string): any {
     humidity: hum,
     windSpeed: wind,
     windDirection: Math.floor(Math.random() * 360),
+    pressure: 1013, // Standard atmospheric pressure at sea level in hPa (QNH)
     fetchedAt: Date.now()
   };
 }
@@ -513,7 +514,7 @@ async function fetchRealWeather(city: string): Promise<any | null> {
       console.log(`[Weather API] Encontrado melhor correspondência: ${formattedName} (Estado/Região: ${admin1 || "N/A"}) - Coordenadas: (${latitude}, ${longitude})`);
     }
 
-    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;
+    const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl&timezone=auto`;
     const forecastRes = await fetch(forecastUrl, { signal: AbortSignal.timeout(4000) });
     if (!forecastRes.ok) {
       console.warn(`[Weather API] Falha na resposta meteorológica Open-Meteo: status ${forecastRes.status}`);
@@ -531,6 +532,7 @@ async function fetchRealWeather(city: string): Promise<any | null> {
     const humidity = Math.round(current.relative_humidity_2m);
     const windSpeed = Math.round(current.wind_speed_10m);
     const windDirection = current.wind_direction_10m !== undefined ? Math.round(current.wind_direction_10m) : 0;
+    const pressure = current.pressure_msl !== undefined ? Math.round(current.pressure_msl) : undefined;
     const weatherCode = Number(current.weather_code);
 
     // Map weather codes to friendly descriptions and conditions in Portuguese
@@ -585,6 +587,7 @@ async function fetchRealWeather(city: string): Promise<any | null> {
       humidity,
       windSpeed,
       windDirection,
+      pressure,
       fetchedAt: Date.now()
     };
   } catch (err: any) {
@@ -1423,7 +1426,8 @@ Instruções estritas:
   "condition": "Uma palavra simples definindo a condição: 'Ensolarado', 'Nublado', 'Chuva Leve', 'Temporal', 'Parcialmente Nublado' ou similar",
   "description": "Uma frase resumida descrevendo o clima e detalhes relevantes",
   "humidity": <número inteiro da umidade de 0 a 100>,
-  "windSpeed": <número inteiro da velocidade do vento em km/h>
+  "windSpeed": <número inteiro da velocidade do vento em km/h>,
+  "pressure": <número inteiro da pressão atmosférica reduzida ao nível do mar (QNH) em hPa, ex: 1013>
 }`;
 
       // Query Gemini 3.5 Flash with search tools
