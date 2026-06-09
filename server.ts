@@ -775,6 +775,140 @@ async function startServer() {
     }
   });
 
+  interface SharedCameraStream {
+    id: string;
+    name: string;
+    streamUrl: string;
+    isRtmp: boolean;
+    ffmpegProcess: any;
+    listeners: Set<(frame: Buffer) => void>;
+    buffer: Buffer;
+    watchdogTimer: NodeJS.Timeout | null;
+    restartTimer: NodeJS.Timeout | null;
+    stopTimeout: NodeJS.Timeout | null;
+    hasSentData: boolean;
+  }
+
+  const cameraStreams = new Map<string, SharedCameraStream>();
+
+  const startFFmpegForCamera = (stream: SharedCameraStream) => {
+    if (stream.ffmpegProcess) {
+      try {
+        stream.ffmpegProcess.kill("SIGKILL");
+      } catch (e) {}
+      stream.ffmpegProcess = null;
+    }
+    if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
+    if (stream.restartTimer) clearTimeout(stream.restartTimer);
+
+    stream.hasSentData = false;
+    stream.buffer = Buffer.alloc(0);
+
+    const ffmpegArgs = stream.isRtmp ? [
+      "-fflags", "+genpts+discardcorrupt+nobuffer",          // Reduce latency and start decoding instantly
+      "-rtmp_live", "live",           // Indicate live stream source bypass
+      "-analyzeduration", "1000000",   // 1.0 second to analyze codec info
+      "-probesize", "750000",          // 750KB probe size to ensure we get a keyframe quickly
+      "-i", stream.streamUrl,
+      "-vf", "scale=1024:-2",
+      "-q:v", "6",
+      "-f", "image2pipe",
+      "-vcodec", "mjpeg",
+      "-an",
+      "-r", "15",
+      "pipe:1"
+    ] : [
+      "-rtsp_transport", "tcp", // Force stable connection over TCP instead of UDP packets Loss
+      "-i", stream.streamUrl,
+      "-vf", "scale=1024:-2", // Downscale to 1024 width and even height maintaining aspect ratio
+      "-q:v", "6", // Balance of details and low latency transport
+      "-f", "image2pipe",
+      "-vcodec", "mjpeg",
+      "-an", // Eliminate unneeded microphone audio streams
+      "-r", "15", // Cap FPS at 15 to secure lighter, smoother rendering
+      "pipe:1"
+    ];
+
+    console.log(`[Stream Orchestrator] Spawning FFmpeg process for ${stream.name} (${stream.isRtmp ? "RTMP" : "RTSP"})`);
+    stream.ffmpegProcess = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "pipe"] });
+
+    const resetWatchdog = () => {
+      if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
+      if (stream.listeners.size === 0) return;
+
+      stream.watchdogTimer = setTimeout(() => {
+        if (stream.listeners.size > 0) {
+          console.warn(`[Stream Orchestrator Watchdog] No frames received in 8 seconds for ${stream.name}. Restarting FFmpeg...`);
+          startFFmpegForCamera(stream);
+        }
+      }, 8000);
+    };
+
+    resetWatchdog();
+
+    stream.ffmpegProcess.stdout.on("data", (chunk: Buffer) => {
+      if (!stream.hasSentData) {
+        stream.hasSentData = true;
+      }
+      stream.buffer = Buffer.concat([stream.buffer, chunk]);
+      let start = 0;
+
+      while (true) {
+        const soi = stream.buffer.indexOf(Buffer.from([0xff, 0xd8]), start);
+        if (soi === -1) break;
+
+        const eoi = stream.buffer.indexOf(Buffer.from([0xff, 0xd9]), soi + 2);
+        if (eoi === -1) {
+          stream.buffer = stream.buffer.subarray(soi);
+          break;
+        }
+
+        const frame = stream.buffer.subarray(soi, eoi + 2);
+
+        // Broadcast JPEG frame to all connected clients
+        for (const emitFrame of stream.listeners) {
+          try {
+            emitFrame(frame);
+          } catch (err) {
+            stream.listeners.delete(emitFrame);
+          }
+        }
+
+        resetWatchdog();
+        start = eoi + 2;
+      }
+
+      if (start > 0) {
+        stream.buffer = stream.buffer.subarray(start);
+      }
+    });
+
+    stream.ffmpegProcess.stderr.on("data", (chunk: Buffer) => {
+      const logs = chunk.toString();
+      if (logs.includes("Error") || logs.includes("failed") || logs.includes("timed out") || logs.includes("Connection refused")) {
+        console.warn(`[Stream Orchestrator FFmpeg ${stream.id}] ${logs.trim()}`);
+      }
+    });
+
+    stream.ffmpegProcess.on("error", (err: any) => {
+      console.error(`[Stream Orchestrator] FFmpeg error for ${stream.id}:`, err.message);
+      if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
+    });
+
+    stream.ffmpegProcess.on("close", (code: number | null) => {
+      console.log(`[Stream Orchestrator] FFmpeg process for ${stream.name} closed with code ${code}`);
+      if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
+      stream.ffmpegProcess = null;
+
+      if (stream.listeners.size > 0) {
+        console.log(`[Stream Orchestrator] Camera ${stream.name} still has ${stream.listeners.size} active listeners. Restarting FFmpeg in 1.5s...`);
+        stream.restartTimer = setTimeout(() => {
+          startFFmpegForCamera(stream);
+        }, 1500);
+      }
+    });
+  };
+
   // Live Transcoding Route: Converts RTSP stream to standard multipart/x-mixed-replace (MJPEG)
   app.get("/api/cameras/:id/stream", async (req, res) => {
     const { id } = req.params;
@@ -815,155 +949,72 @@ async function startServer() {
       "Expires": "0"
     });
 
-    console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Inicializando codec ffmpeg de bypass de vídeo para: ${camera.name} (${streamUrl})`);
+    // Check if we already have an active transcribing orchestrator stream for this camera ID
+    let stream = cameraStreams.get(id);
+    if (!stream) {
+      stream = {
+        id,
+        name: camera.name,
+        streamUrl,
+        isRtmp,
+        ffmpegProcess: null,
+        listeners: new Set(),
+        buffer: Buffer.alloc(0),
+        watchdogTimer: null,
+        restartTimer: null,
+        stopTimeout: null,
+        hasSentData: false
+      };
+      cameraStreams.set(id, stream);
+      startFFmpegForCamera(stream);
+    } else {
+      // If we already had this stream, but it was scheduled to turn off due to 0 listeners, cancel the stop timeout!
+      if (stream.stopTimeout) {
+        console.log(`[Stream Orchestrator] Canceling stop timeout for camera ${camera.name} because a new viewer connected!`);
+        clearTimeout(stream.stopTimeout);
+        stream.stopTimeout = null;
+      }
+    }
 
-    // Build perfect arguments to transcode RTSP/RTMP feed dynamically to Motion JPEG
-    // Uses scale=1024:-2 to ensure calculated height is divisible by 2 to prevent silent vertical scale crashes
-    const ffmpegArgs = isRtmp ? [
-      "-fflags", "+genpts+discardcorrupt+nobuffer",          // Reduce latency and start decoding instantly
-      "-rtmp_live", "live",           // Indicate live stream source bypass
-      "-analyzeduration", "1000000",   // 1.0 second to analyze codec info
-      "-probesize", "750000",          // 750KB probe size to ensure we get a keyframe quickly
-      "-i", streamUrl,
-      "-vf", "scale=1024:-2",
-      "-q:v", "6",
-      "-f", "image2pipe",
-      "-vcodec", "mjpeg",
-      "-an",
-      "-r", "15",
-      "pipe:1"
-    ] : [
-      "-rtsp_transport", "tcp", // Force stable connection over TCP instead of UDP packets Loss
-      "-i", streamUrl,
-      "-vf", "scale=1024:-2", // Downscale to 1024 width and even height maintaining aspect ratio
-      "-q:v", "6", // Balance of details and low latency transport
-      "-f", "image2pipe",
-      "-vcodec", "mjpeg",
-      "-an", // Eliminate unneeded microphone audio streams
-      "-r", "15", // Cap FPS at 15 to secure lighter, smoother rendering
-      "pipe:1"
-    ];
-
-    let ffmpegProcess: any = null;
-    let isClientConnected = true;
-    let buffer = Buffer.alloc(0);
-    let hasSentData = false;
-    let watchdogTimer: NodeJS.Timeout | null = null;
-    let restartTimer: NodeJS.Timeout | null = null;
-
-    const resetWatchdog = () => {
-      if (watchdogTimer) clearTimeout(watchdogTimer);
-      if (!isClientConnected) return;
-
-      // Watchdog triggers if we go 7 seconds without receiving any frames.
-      // This covers both the initial connection phase and any subsequent frozen streams!
-      watchdogTimer = setTimeout(() => {
-        if (isClientConnected) {
-          console.warn(`[Stream Watchdog] Sem novas imagens por mais de 7 segundos para a câmera ${camera.name} (${id}). Reiniciando processo FFmpeg...`);
-          if (ffmpegProcess) {
-            try {
-              ffmpegProcess.kill("SIGKILL");
-            } catch (e) {}
-          }
-        }
-      }, 7000);
+    // Write-push listener context
+    const writeFrameListener = (frame: Buffer) => {
+      try {
+        res.write("--frame\r\n");
+        res.write("Content-Type: image/jpeg\r\n");
+        res.write(`Content-Length: ${frame.length}\r\n\r\n`);
+        res.write(frame);
+        res.write("\r\n");
+      } catch (writeErr) {
+        // HTTP socket closed or broken, listener will be removed in the close handler
+      }
     };
 
-    const startFFmpeg = () => {
-      if (!isClientConnected) return;
-
-      console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Iniciando/Reiniciando adaptador FFmpeg para: ${camera.name}`);
-      
-      ffmpegProcess = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "pipe"] });
-
-      // Start the watchdog wait for the initial frame
-      resetWatchdog();
-
-      ffmpegProcess.stdout.on("data", (chunk: Buffer) => {
-        if (!hasSentData) {
-          hasSentData = true;
-        }
-        buffer = Buffer.concat([buffer, chunk]);
-        let start = 0;
-
-        while (true) {
-          const soi = buffer.indexOf(Buffer.from([0xff, 0xd8]), start);
-          if (soi === -1) break;
-
-          const eoi = buffer.indexOf(Buffer.from([0xff, 0xd9]), soi + 2);
-          if (eoi === -1) {
-            buffer = buffer.subarray(soi);
-            break;
-          }
-
-          const frame = buffer.subarray(soi, eoi + 2);
-
-          try {
-            res.write("--frame\r\n");
-            res.write("Content-Type: image/jpeg\r\n");
-            res.write(`Content-Length: ${frame.length}\r\n\r\n`);
-            res.write(frame);
-            res.write("\r\n");
-
-            // Reset watchdog since we successfully parsed and pushed a frame
-            resetWatchdog();
-          } catch (writeErr) {
-            console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Erro escrevendo frame multipart no socket (conexao abortada pelo navegador): ${camera.name}`);
-            isClientConnected = false;
-            if (watchdogTimer) clearTimeout(watchdogTimer);
-            if (ffmpegProcess) ffmpegProcess.kill("SIGKILL");
-            break;
-          }
-
-          start = eoi + 2;
-        }
-
-        if (start > 0) {
-          buffer = buffer.subarray(start);
-        }
-      });
-
-      ffmpegProcess.stderr.on("data", (chunk: Buffer) => {
-        const logs = chunk.toString();
-        if (logs.includes("Error") || logs.includes("failed") || logs.includes("timed out") || logs.includes("Connection refused")) {
-          console.warn(`[FFmpeg Stream ${id} Diagnostic] ${logs.trim()}`);
-        }
-      });
-
-      ffmpegProcess.on("error", (err: any) => {
-        console.error(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Falha ao disparar FFmpeg para ${id}:`, err.message);
-        if (watchdogTimer) clearTimeout(watchdogTimer);
-      });
-
-      ffmpegProcess.on("close", (code: number | null) => {
-        console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Processo FFmpeg para ${camera.name} finalizado com codigo ${code}`);
-        if (watchdogTimer) clearTimeout(watchdogTimer);
-
-        if (isClientConnected) {
-          console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] O cliente ainda mantem a conexao ativa. Agendando reinicializacao automatica do FFmpeg em 1.5s...`);
-          hasSentData = false;
-          buffer = Buffer.alloc(0);
-          
-          restartTimer = setTimeout(() => {
-            startFFmpeg();
-          }, 1500);
-        } else {
-          try {
-            res.end();
-          } catch (e) {}
-        }
-      });
-    };
-
-    startFFmpeg();
+    stream.listeners.add(writeFrameListener);
+    console.log(`[Stream Orchestrator] Client subscribed to ${camera.name}. Active listeners: ${stream.listeners.size}`);
 
     req.on("close", () => {
-      console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Conexao HTTP fechada de fato pelo cliente para: ${camera.name}`);
-      isClientConnected = false;
-      if (watchdogTimer) clearTimeout(watchdogTimer);
-      if (restartTimer) clearTimeout(restartTimer);
-      if (ffmpegProcess) {
-        ffmpegProcess.kill("SIGKILL");
+      if (stream) {
+        stream.listeners.delete(writeFrameListener);
+        console.log(`[Stream Orchestrator] Client unsubscribed from ${camera.name}. Active listeners remaining: ${stream.listeners.size}`);
+
+        // If no clients are listening anymore, don't kill ffmpeg immediately to avoid constant re-connects on page reloads/fullscreens
+        if (stream.listeners.size === 0) {
+          if (stream.stopTimeout) clearTimeout(stream.stopTimeout);
+          
+          stream.stopTimeout = setTimeout(() => {
+            if (stream && stream.listeners.size === 0) {
+              console.log(`[Stream Orchestrator] No viewers for 6 seconds. Fully tearing down FFmpeg for ${stream.name}`);
+              if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
+              if (stream.restartTimer) clearTimeout(stream.restartTimer);
+              if (stream.ffmpegProcess) {
+                try {
+                  stream.ffmpegProcess.kill("SIGKILL");
+                } catch (e) {}
+              }
+              cameraStreams.delete(id);
+            }
+          }, 6000); // 6 seconds grace period
+        }
       }
     });
   });
