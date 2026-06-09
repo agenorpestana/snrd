@@ -814,9 +814,6 @@ async function startServer() {
     stream.buffer = Buffer.alloc(0);
 
     const ffmpegArgs = stream.isRtmp ? [
-      "-rtmp_live", "live",           // Indicate live stream source bypass
-      "-analyzeduration", "2000000",   // Full analysis to robustly resolve H.265/varying video feeds
-      "-probesize", "1500000",          // Large probe to fetch keyframe headers reliably
       "-i", stream.streamUrl,
       "-vf", "scale=1024:-2",          // Beautiful 1024-width high definition scale
       "-q:v", "6",                     // High detail visuals with perfect compression
@@ -897,6 +894,9 @@ async function startServer() {
 
     stream.ffmpegProcess.stderr.on("data", (chunk: Buffer) => {
       const logs = chunk.toString();
+      try {
+        fs.appendFileSync(path.join(process.cwd(), "ffmpeg_debug.log"), `[${stream.name}] ${logs}`);
+      } catch (e) {}
       if (logs.includes("Error") || logs.includes("failed") || logs.includes("timed out") || logs.includes("Connection refused")) {
         console.warn(`[Stream Orchestrator FFmpeg ${stream.id}] ${logs.trim()}`);
       }
