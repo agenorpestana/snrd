@@ -287,8 +287,45 @@ if [ $IS_UPDATE -eq 0 ]; then
     read REPO_URL
 fi
 
-# Instalação de dependências do sistema
-apt update && apt install -y nginx certbot python3-certbot-nginx curl git mysql-server build-essential ffmpeg
+# Instalação de dependências do sistema (com suporte a RTMP por módulo do Nginx)
+apt update && apt install -y nginx libnginx-mod-rtmp certbot python3-certbot-nginx curl git mysql-server build-essential ffmpeg gnupg ca-certificates
+
+# Configuração automática do módulo RTMP no Nginx para receber os fluxos de câmeras empurrados
+if [ -f /etc/nginx/nginx.conf ] && ! grep -q "rtmp {" /etc/nginx/nginx.conf; then
+    echo -e "${YELLOW}Configurando bloco RTMP em /etc/nginx/nginx.conf...${NC}"
+    cat >> /etc/nginx/nginx.conf <<EOL
+
+rtmp {
+    server {
+        listen 1935;
+        chunk_size 4096;
+
+        application live {
+            live on;
+            record off;
+            meta copy;
+        }
+    }
+}
+EOL
+    echo -e "${GREEN}Módulo RTMP configurado com sucesso na porta 1935!${NC}"
+fi
+
+# Instalação do Node.js v20 LTS e PM2 para Ubuntu 24.04 (se não estiver instalado)
+if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    echo -e "${YELLOW}Node.js/npm não encontrados. Instalando Node.js v20 LTS via NodeSource...${NC}"
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg --yes
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
+    apt update
+    apt install -y nodejs
+fi
+
+# Instalação global do PM2 se necessário
+if ! command -v pm2 &> /dev/null; then
+    echo -e "${YELLOW}PM2 não encontrado. Instalando PM2 globalmente via npm...${NC}"
+    npm install -g pm2
+fi
 
 # Configuração MySQL (Apenas cria se o banco e usuário forem fornecidos)
 if [ ! -z "$DB_PASSWORD" ]; then

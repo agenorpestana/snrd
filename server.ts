@@ -803,6 +803,8 @@ async function startServer() {
       return res.status(400).send("Falta endereço de rede e protocolo de comutação da câmera.");
     }
 
+    const isRtmp = streamUrl.toLowerCase().startsWith("rtmp://") || streamUrl.toLowerCase().startsWith("rtmps://");
+
     // Set standard boundary headers for server-push MJPEG
     res.writeHead(200, {
       "Content-Type": "multipart/x-mixed-replace; boundary=frame",
@@ -813,11 +815,20 @@ async function startServer() {
       "Expires": "0"
     });
 
-    console.log(`[RTSP Stream] Inicializando codec ffmpeg de bypass de vídeo para: ${camera.name} (${streamUrl})`);
+    console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Inicializando codec ffmpeg de bypass de vídeo para: ${camera.name} (${streamUrl})`);
 
-    // Build perfect arguments to transcode RTSP feed dynamically to Motion JPEG
+    // Build perfect arguments to transcode RTSP/RTMP feed dynamically to Motion JPEG
     // Uses scale=1024:-2 to ensure calculated height is divisible by 2 to prevent silent vertical scale crashes
-    const ffmpegArgs = [
+    const ffmpegArgs = isRtmp ? [
+      "-i", streamUrl,
+      "-vf", "scale=1024:-2",
+      "-q:v", "6",
+      "-f", "image2pipe",
+      "-vcodec", "mjpeg",
+      "-an",
+      "-r", "15",
+      "pipe:1"
+    ] : [
       "-rtsp_transport", "tcp", // Force stable connection over TCP instead of UDP packets Loss
       "-i", streamUrl,
       "-vf", "scale=1024:-2", // Downscale to 1024 width and even height maintaining aspect ratio
@@ -836,7 +847,7 @@ async function startServer() {
     // Timeout safety: if ffmpeg does not output any video frames within 10 seconds, close stream
     const streamTimeout = setTimeout(() => {
       if (!hasSentData) {
-        console.warn(`[RTSP Stream] Timeout de conexão (10s) da câmera ${id}. Sem quadros recebidos.`);
+        console.warn(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Timeout de conexão (10s) da câmera ${id}. Sem quadros recebidos.`);
         ffmpeg.kill("SIGKILL");
         res.end();
       }
@@ -882,18 +893,18 @@ async function startServer() {
     });
 
     ffmpeg.on("error", (err) => {
-      console.error(`[RTSP Stream] Erro iniciando ffmpeg para a câmera ${id}:`, err.message);
+      console.error(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Erro iniciando ffmpeg para a câmera ${id}:`, err.message);
       clearTimeout(streamTimeout);
     });
 
     ffmpeg.on("close", (code) => {
-      console.log(`[RTSP Stream] Transcodificador da câmera ${id} finalizado com código ${code}`);
+      console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Transcodificador da câmera ${id} finalizado com código ${code}`);
       clearTimeout(streamTimeout);
       res.end();
     });
 
     req.on("close", () => {
-      console.log(`[RTSP Stream] Conexão encerrada pelo cliente, encerrando processo ffmpeg para a câmera ${id}`);
+      console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Conexão encerrada pelo cliente, encerrando processo ffmpeg para a câmera ${id}`);
       clearTimeout(streamTimeout);
       ffmpeg.kill("SIGKILL");
     });

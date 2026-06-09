@@ -35,6 +35,8 @@ export default function AdminPanel({
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [streamUrl, setStreamUrl] = useState("");
+  const [protocol, setProtocol] = useState<"rtsp" | "rtmp">("rtsp");
+  const [rtmpStreamKey, setRtmpStreamKey] = useState("");
   const [city, setCity] = useState("Joinville");
   const [states, setStates] = useState<{ sigla: string; nome: string }[]>([]);
   const [cities, setCities] = useState<string[]>([]);
@@ -320,16 +322,19 @@ export default function AdminPanel({
 
   const handleCameraSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !streamUrl || !city) {
-      alert("Nome, link de stream, estado e cidade de monitoramento são obrigatórios.");
+    if (!name || (protocol === "rtsp" && !streamUrl) || (protocol === "rtmp" && !rtmpStreamKey) || !city) {
+      alert("Nome, link de stream / chave de fluxo, estado e cidade de monitoramento são obrigatórios.");
       return;
     }
 
     const finalCity = selectedState ? `${city.trim()}, ${selectedState}` : city.trim();
+    const finalStreamUrl = protocol === "rtmp"
+      ? `rtmp://127.0.0.1:1935/live/${rtmpStreamKey}`
+      : streamUrl;
 
     const payload = {
       name,
-      streamUrl,
+      streamUrl: finalStreamUrl,
       city: finalCity,
       description,
       isPtzCompatible,
@@ -379,6 +384,8 @@ export default function AdminPanel({
     setEditId(null);
     setName("");
     setStreamUrl("");
+    setProtocol("rtsp");
+    setRtmpStreamKey("");
     setCity("Joinville");
     setSelectedState("SC");
     setDescription("");
@@ -399,6 +406,16 @@ export default function AdminPanel({
     setEditId(cam.id);
     setName(cam.name);
     setStreamUrl(cam.streamUrl);
+    
+    // Detect RTMP protocol stream URL to auto-select type
+    if (cam.streamUrl && cam.streamUrl.startsWith("rtmp://")) {
+      setProtocol("rtmp");
+      const key = cam.streamUrl.split("/").pop() || "";
+      setRtmpStreamKey(key);
+    } else {
+      setProtocol("rtsp");
+      setRtmpStreamKey("");
+    }
     
     // Parse combined city-state format, e.g., "Joinville, SC"
     const parts = cam.city.split(/,\s*/);
@@ -660,18 +677,109 @@ export default function AdminPanel({
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label htmlFor="cam-stream-field" className="text-xs text-slate-300 font-medium">URL de Streaming (RTSP ou HLS HTTP):</label>
-                  <input
-                    id="cam-stream-field"
-                    type="text"
-                    required
-                    value={streamUrl}
-                    onChange={(e) => setStreamUrl(e.target.value)}
-                    placeholder="rtsp://admin:admin123@192.168.1.108:554/live"
-                    className="w-full bg-[#1c2c31] border border-slate-850 px-3 py-2 rounded-lg text-xs leading-normal text-slate-150 font-mono focus:outline-none focus:border-[#00A767]"
-                  />
+                <div className="space-y-2">
+                  <label className="text-xs text-slate-300 font-medium block">Protocolo de Entrada da Câmera:</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProtocol("rtsp");
+                      }}
+                      className={`py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all border ${
+                        protocol === "rtsp"
+                          ? "bg-[#002f1d] text-[#00A767] border-[#00A767]"
+                          : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      RTSP (Ativo / Pull)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProtocol("rtmp");
+                        if (!rtmpStreamKey) {
+                          setRtmpStreamKey(`cam_${Math.random().toString(36).substring(2, 8)}`);
+                        }
+                      }}
+                      className={`py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all border ${
+                        protocol === "rtmp"
+                          ? "bg-[#002f1d] text-[#00A767] border-[#00A767]"
+                          : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      RTMP (Empurrado / Push)
+                    </button>
+                  </div>
                 </div>
+
+                {protocol === "rtsp" ? (
+                  <div className="space-y-1">
+                    <label htmlFor="cam-stream-field" className="text-xs text-slate-300 font-medium">URL de Streaming (RTSP ou HLS HTTP):</label>
+                    <input
+                      id="cam-stream-field"
+                      type="text"
+                      required={protocol === "rtsp"}
+                      value={streamUrl}
+                      onChange={(e) => setStreamUrl(e.target.value)}
+                      placeholder="rtsp://admin:admin123@192.168.1.108:554/live"
+                      className="w-full bg-[#1c2c31] border border-slate-850 px-3 py-2 rounded-lg text-xs leading-normal text-slate-150 font-mono focus:outline-none focus:border-[#00A767]"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-3 bg-slate-950 p-4 rounded-xl border border-slate-850">
+                    <div className="space-y-1">
+                      <label htmlFor="cam-rtmp-key-field" className="text-xs text-[#00A767] font-semibold">Chave de Segurança do Fluxo (Stream Key):</label>
+                      <div className="flex space-x-2">
+                        <input
+                          id="cam-rtmp-key-field"
+                          type="text"
+                          required={protocol === "rtmp"}
+                          value={rtmpStreamKey}
+                          onChange={(e) => {
+                            const sanitized = e.target.value.replace(/[^a-zA-Z0-9_-]/g, "");
+                            setRtmpStreamKey(sanitized);
+                          }}
+                          placeholder="Ex: runway_p9"
+                          className="flex-1 bg-[#1c2c31] border border-slate-800 px-3 py-1.5 rounded text-xs text-slate-100 font-mono focus:outline-none focus:border-[#00A767]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setRtmpStreamKey(`cam_${Math.random().toString(36).substring(2, 8)}`)}
+                          className="bg-slate-900 border border-slate-800 hover:border-slate-700 px-2.5 py-1.5 rounded text-xs text-slate-400 hover:text-white transition-all cursor-pointer"
+                        >
+                          Gerar
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] leading-relaxed space-y-2 border-t border-slate-900 pt-2.5">
+                      <p className="text-slate-400 font-medium">
+                        Configure a transmissão em sua câmera física com os seguintes parâmetros:
+                      </p>
+                      
+                      <div className="space-y-2 bg-[#091113] p-2.5 rounded border border-slate-900/50">
+                        <div>
+                          <span className="text-[10px] uppercase font-mono text-slate-500 block">Servidor RTMP / URL:</span>
+                          <code className="text-amber-400 font-mono break-all select-all text-xs">
+                            {`rtmp://${window.location.hostname}:1935/live`}
+                          </code>
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase font-mono text-slate-500 block">Chave de Fluxo / Stream Key:</span>
+                          <code className="text-[#00A767] font-bold font-mono select-all text-xs">
+                            {rtmpStreamKey || "chave_vazia"}
+                          </code>
+                        </div>
+                        <div className="border-t border-slate-900/45 pt-1.5">
+                          <span className="text-[10px] uppercase font-mono text-slate-500 block">URL Completo (Único Campo):</span>
+                          <code className="text-cyan-400 font-mono break-all select-all text-xs">
+                            {`rtmp://${window.location.hostname}:1935/live/${rtmpStreamKey || "chave_vazia"}`}
+                          </code>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div className="space-y-1">
@@ -795,9 +903,21 @@ export default function AdminPanel({
                           {cam.name}
                         </h4>
                       </div>
-                      <p className="text-[11px] text-slate-405 truncate font-mono text-slate-500 max-w-[230px]">
-                        URL: {cam.streamUrl}
-                      </p>
+                      {cam.streamUrl && cam.streamUrl.startsWith("rtmp://") ? (
+                        <div className="flex items-center space-x-1.5">
+                          <span className="bg-amber-950/80 text-amber-400 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded leading-none">RTMP</span>
+                          <p className="text-[11px] text-slate-400 truncate font-mono max-w-[230px]" title={cam.streamUrl}>
+                            {`rtmp://${window.location.hostname}:1935/live/${cam.streamUrl.split("/").pop()}`}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1.5">
+                          <span className="bg-[#002f1d]/80 text-[#00A767] text-[9px] font-mono font-bold px-1.5 py-0.5 rounded leading-none">RTSP</span>
+                          <p className="text-[11px] text-slate-500 truncate font-mono max-w-[230px]" title={cam.streamUrl}>
+                            {cam.streamUrl}
+                          </p>
+                        </div>
+                      )}
                       <div className="flex items-center space-x-3 text-[10px] text-slate-500 font-mono">
                         <span className="bg-slate-900 py-0.5 px-1.5 rounded">{cam.city}</span>
                         <span>PTZ: {cam.isPtzCompatible ? "S" : "N"}</span>
