@@ -814,36 +814,26 @@ async function startServer() {
     stream.buffer = Buffer.alloc(0);
 
     const ffmpegArgs = stream.isRtmp ? [
-      "-fflags", "+genpts+discardcorrupt+nobuffer",          // Reduce latency and start decoding instantly
       "-rtmp_live", "live",           // Indicate live stream source bypass
-      "-analyzeduration", "1000000",   // Speed up codec parsing analysis to 1.0 second
-      "-probesize", "750000",          // Slim probesize for instant handshakes
-      "-threads", "4",                 // Multi-threaded decoding (absolutely critical for CPU-bound HEVC/H.265)
+      "-analyzeduration", "2000000",   // Full analysis to robustly resolve H.265/varying video feeds
+      "-probesize", "1500000",          // Large probe to fetch keyframe headers reliably
       "-i", stream.streamUrl,
-      "-vf", "scale=800:-2:flags=fast_bilinear", // fast bilinear scale down using 10x less cycles than high precision filters
-      "-q:v", "10",                    // Good automatic compression (saves massive bandwidth and network buffer congestion)
+      "-vf", "scale=1024:-2",          // Beautiful 1024-width high definition scale
+      "-q:v", "6",                     // High detail visuals with perfect compression
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
       "-an",                           // Skip audio stream parsing entirely
-      "-sn",                           // Skip subtitle stream parsing
-      "-dn",                           // Skip data stream parsing
-      "-r", "12",                      // 12 FPS cap - perfect smoothness and highly CPU-efficient
+      "-r", "15",                      // 15 FPS cap - perfect smoothness
       "pipe:1"
     ] : [
-      "-rtsp_transport", "tcp",        // Force stable connection over TCP instead of UDP packets Loss
-      "-fflags", "+genpts+discardcorrupt+nobuffer",
-      "-analyzeduration", "1000000",   // Speed up codec parsing analysis
-      "-probesize", "750000",          // Slim probesize
-      "-threads", "4",                 // Multi-threaded decoding
+      "-rtsp_transport", "tcp",        // Force stable connection over TCP instead of UDP packet loss
       "-i", stream.streamUrl,
-      "-vf", "scale=800:-2:flags=fast_bilinear", // Fast bilinear downscaling
-      "-q:v", "8",                     // Beautiful visual quality with optimized compression
+      "-vf", "scale=1024:-2",          // Beautiful 1024-width high definition scale
+      "-q:v", "6",                     // High detail visuals with perfect compression
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
       "-an",                           // Skip audio
-      "-sn",                           // Skip subtitles
-      "-dn",                           // Skip data
-      "-r", "12",                      // 12 FPS cap
+      "-r", "15",                      // 15 FPS cap - perfect smoothness
       "pipe:1"
     ];
 
@@ -862,8 +852,8 @@ async function startServer() {
       }, timeoutMs);
     };
 
-    // Use a larger 35-second watchdog for the initial frame negotiation to allow slow H.265 RTMP/Mibo cold-starts
-    resetWatchdog(35000);
+    // Use a larger 30-second watchdog for the initial frame negotiation to allow slow cold-starts
+    resetWatchdog(30000);
 
     stream.ffmpegProcess.stdout.on("data", (chunk: Buffer) => {
       if (!stream.hasSentData) {
@@ -895,8 +885,8 @@ async function startServer() {
           }
         }
 
-        // Once initialized, we use a standard 20-second watchdog for stream freezes
-        resetWatchdog(20000);
+        // Once initialized, we use a standard 15-second watchdog for stream freezes
+        resetWatchdog(15000);
         start = eoi + 2;
       }
 
@@ -1028,16 +1018,17 @@ async function startServer() {
     stream.listeners.add(writeFrameListener);
     console.log(`[Stream Orchestrator] Client subscribed to ${camera.name}. Active listeners: ${stream.listeners.size}`);
 
-    // Set up continuous 4-second keepalive to protect against Proxies or Browsers terminating the chunked stream
+    // Set up continuous 3-second keepalive to protect against Proxies or Browsers terminating the chunked stream
+    // Writes raw newlines inside safe boundary structures so the connection remains hot, preventing browser rendering resets
     const keepAliveInterval = setInterval(() => {
-      if (Date.now() - lastKeepAliveTime >= 4000) {
+      if (Date.now() - lastKeepAliveTime >= 3000) {
         if (stream && stream.lastFrame) {
           writeFrameListener(stream.lastFrame);
         } else {
           writeFrameListener(TINY_BLACK_JPEG);
         }
       }
-    }, 4000);
+    }, 3000);
 
     req.on("close", () => {
       clearInterval(keepAliveInterval);
