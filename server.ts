@@ -844,81 +844,110 @@ async function startServer() {
       "pipe:1"
     ];
 
-    const ffmpeg = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "pipe"] });
+    let ffmpegProcess: any = null;
+    let isClientConnected = true;
     let buffer = Buffer.alloc(0);
     let hasSentData = false;
+    let streamTimeout: NodeJS.Timeout | null = null;
+    let restartTimer: NodeJS.Timeout | null = null;
 
-    // Listen to stderr for important FFmpeg stream errors or warning feedbacks
-    ffmpeg.stderr.on("data", (chunk) => {
-      const logs = chunk.toString();
-      if (logs.includes("Error") || logs.includes("failed") || logs.includes("timed out") || logs.includes("Connection refused")) {
-        console.warn(`[FFmpeg Stream ${id} Error] ${logs.trim()}`);
-      }
-    });
+    const startFFmpeg = () => {
+      if (!isClientConnected) return;
 
-    // Timeout safety: if ffmpeg does not output any video frames within 10 seconds, close stream
-    const streamTimeout = setTimeout(() => {
-      if (!hasSentData) {
-        console.warn(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Timeout de conexão (10s) da câmera ${id}. Sem quadros recebidos.`);
-        ffmpeg.kill("SIGKILL");
-        res.end();
-      }
-    }, 10000);
+      console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Iniciando/Reiniciando adaptador FFmpeg para: ${camera.name}`);
+      
+      ffmpegProcess = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "pipe"] });
 
-    ffmpeg.stdout.on("data", (chunk) => {
-      if (!hasSentData) {
-        hasSentData = true;
-        clearTimeout(streamTimeout);
-      }
-      buffer = Buffer.concat([buffer, chunk]);
-      let start = 0;
+      streamTimeout = setTimeout(() => {
+        if (!hasSentData && isClientConnected) {
+          console.warn(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Timeout de conexao da camera ${id}. Encerrando processo atual do FFmpeg.`);
+          if (ffmpegProcess) ffmpegProcess.kill("SIGKILL");
+        }
+      }, 10000);
 
-      while (true) {
-        const soi = buffer.indexOf(Buffer.from([0xff, 0xd8]), start);
-        if (soi === -1) break;
+      ffmpegProcess.stdout.on("data", (chunk: Buffer) => {
+        if (!hasSentData) {
+          hasSentData = true;
+          if (streamTimeout) clearTimeout(streamTimeout);
+        }
+        buffer = Buffer.concat([buffer, chunk]);
+        let start = 0;
 
-        const eoi = buffer.indexOf(Buffer.from([0xff, 0xd9]), soi + 2);
-        if (eoi === -1) {
-          buffer = buffer.subarray(soi);
-          break;
+        while (true) {
+          const soi = buffer.indexOf(Buffer.from([0xff, 0xd8]), start);
+          if (soi === -1) break;
+
+          const eoi = buffer.indexOf(Buffer.from([0xff, 0xd9]), soi + 2);
+          if (eoi === -1) {
+            buffer = buffer.subarray(soi);
+            break;
+          }
+
+          const frame = buffer.subarray(soi, eoi + 2);
+
+          try {
+            res.write("--frame\r\n");
+            res.write("Content-Type: image/jpeg\r\n");
+            res.write(`Content-Length: ${frame.length}\r\n\r\n`);
+            res.write(frame);
+            res.write("\r\n");
+          } catch (writeErr) {
+            console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Erro escrevendo frame multipart no socket (conexao abortada pelo navegador): ${camera.name}`);
+            isClientConnected = false;
+            if (ffmpegProcess) ffmpegProcess.kill("SIGKILL");
+            break;
+          }
+
+          start = eoi + 2;
         }
 
-        const frame = buffer.subarray(soi, eoi + 2);
-
-        try {
-          res.write("--frame\r\n");
-          res.write("Content-Type: image/jpeg\r\n");
-          res.write(`Content-Length: ${frame.length}\r\n\r\n`);
-          res.write(frame);
-          res.write("\r\n");
-        } catch (writeErr) {
-          ffmpeg.kill("SIGKILL");
-          break;
+        if (start > 0) {
+          buffer = buffer.subarray(start);
         }
+      });
 
-        start = eoi + 2;
-      }
+      ffmpegProcess.stderr.on("data", (chunk: Buffer) => {
+        const logs = chunk.toString();
+        if (logs.includes("Error") || logs.includes("failed") || logs.includes("timed out") || logs.includes("Connection refused")) {
+          console.warn(`[FFmpeg Stream ${id} Diagnostic] ${logs.trim()}`);
+        }
+      });
 
-      if (start > 0) {
-        buffer = buffer.subarray(start);
-      }
-    });
+      ffmpegProcess.on("error", (err: any) => {
+        console.error(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Falha ao disparar FFmpeg para ${id}:`, err.message);
+        if (streamTimeout) clearTimeout(streamTimeout);
+      });
 
-    ffmpeg.on("error", (err) => {
-      console.error(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Erro iniciando ffmpeg para a câmera ${id}:`, err.message);
-      clearTimeout(streamTimeout);
-    });
+      ffmpegProcess.on("close", (code: number | null) => {
+        console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Processo FFmpeg para ${camera.name} finalizado com codigo ${code}`);
+        if (streamTimeout) clearTimeout(streamTimeout);
 
-    ffmpeg.on("close", (code) => {
-      console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Transcodificador da câmera ${id} finalizado com código ${code}`);
-      clearTimeout(streamTimeout);
-      res.end();
-    });
+        if (isClientConnected) {
+          console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] O cliente ainda mantem a conexao ativa. Agendando reinicializacao automatica do FFmpeg em 1.5s...`);
+          hasSentData = false;
+          buffer = Buffer.alloc(0);
+          
+          restartTimer = setTimeout(() => {
+            startFFmpeg();
+          }, 1500);
+        } else {
+          try {
+            res.end();
+          } catch (e) {}
+        }
+      });
+    };
+
+    startFFmpeg();
 
     req.on("close", () => {
-      console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Conexão encerrada pelo cliente, encerrando processo ffmpeg para a câmera ${id}`);
-      clearTimeout(streamTimeout);
-      ffmpeg.kill("SIGKILL");
+      console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Conexao HTTP fechada de fato pelo cliente para: ${camera.name}`);
+      isClientConnected = false;
+      if (streamTimeout) clearTimeout(streamTimeout);
+      if (restartTimer) clearTimeout(restartTimer);
+      if (ffmpegProcess) {
+        ffmpegProcess.kill("SIGKILL");
+      }
     });
   });
 
