@@ -822,8 +822,8 @@ async function startServer() {
     const ffmpegArgs = isRtmp ? [
       "-fflags", "+genpts+discardcorrupt+nobuffer",          // Reduce latency and start decoding instantly
       "-rtmp_live", "live",           // Indicate live stream source bypass
-      "-analyzeduration", "1500000",   // 1.5 seconds to analyze codec info
-      "-probesize", "1000000",         // 1MB probe size to ensure we get a keyframe
+      "-analyzeduration", "1000000",   // 1.0 second to analyze codec info
+      "-probesize", "750000",          // 750KB probe size to ensure we get a keyframe quickly
       "-i", streamUrl,
       "-vf", "scale=1024:-2",
       "-q:v", "6",
@@ -848,8 +848,26 @@ async function startServer() {
     let isClientConnected = true;
     let buffer = Buffer.alloc(0);
     let hasSentData = false;
-    let streamTimeout: NodeJS.Timeout | null = null;
+    let watchdogTimer: NodeJS.Timeout | null = null;
     let restartTimer: NodeJS.Timeout | null = null;
+
+    const resetWatchdog = () => {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+      if (!isClientConnected) return;
+
+      // Watchdog triggers if we go 7 seconds without receiving any frames.
+      // This covers both the initial connection phase and any subsequent frozen streams!
+      watchdogTimer = setTimeout(() => {
+        if (isClientConnected) {
+          console.warn(`[Stream Watchdog] Sem novas imagens por mais de 7 segundos para a câmera ${camera.name} (${id}). Reiniciando processo FFmpeg...`);
+          if (ffmpegProcess) {
+            try {
+              ffmpegProcess.kill("SIGKILL");
+            } catch (e) {}
+          }
+        }
+      }, 7000);
+    };
 
     const startFFmpeg = () => {
       if (!isClientConnected) return;
@@ -858,17 +876,12 @@ async function startServer() {
       
       ffmpegProcess = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "pipe"] });
 
-      streamTimeout = setTimeout(() => {
-        if (!hasSentData && isClientConnected) {
-          console.warn(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Timeout de conexao da camera ${id}. Encerrando processo atual do FFmpeg.`);
-          if (ffmpegProcess) ffmpegProcess.kill("SIGKILL");
-        }
-      }, 10000);
+      // Start the watchdog wait for the initial frame
+      resetWatchdog();
 
       ffmpegProcess.stdout.on("data", (chunk: Buffer) => {
         if (!hasSentData) {
           hasSentData = true;
-          if (streamTimeout) clearTimeout(streamTimeout);
         }
         buffer = Buffer.concat([buffer, chunk]);
         let start = 0;
@@ -891,9 +904,13 @@ async function startServer() {
             res.write(`Content-Length: ${frame.length}\r\n\r\n`);
             res.write(frame);
             res.write("\r\n");
+
+            // Reset watchdog since we successfully parsed and pushed a frame
+            resetWatchdog();
           } catch (writeErr) {
             console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Erro escrevendo frame multipart no socket (conexao abortada pelo navegador): ${camera.name}`);
             isClientConnected = false;
+            if (watchdogTimer) clearTimeout(watchdogTimer);
             if (ffmpegProcess) ffmpegProcess.kill("SIGKILL");
             break;
           }
@@ -915,12 +932,12 @@ async function startServer() {
 
       ffmpegProcess.on("error", (err: any) => {
         console.error(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Falha ao disparar FFmpeg para ${id}:`, err.message);
-        if (streamTimeout) clearTimeout(streamTimeout);
+        if (watchdogTimer) clearTimeout(watchdogTimer);
       });
 
       ffmpegProcess.on("close", (code: number | null) => {
         console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Processo FFmpeg para ${camera.name} finalizado com codigo ${code}`);
-        if (streamTimeout) clearTimeout(streamTimeout);
+        if (watchdogTimer) clearTimeout(watchdogTimer);
 
         if (isClientConnected) {
           console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] O cliente ainda mantem a conexao ativa. Agendando reinicializacao automatica do FFmpeg em 1.5s...`);
@@ -943,7 +960,7 @@ async function startServer() {
     req.on("close", () => {
       console.log(`[${isRtmp ? "RTMP" : "RTSP"} Stream] Conexao HTTP fechada de fato pelo cliente para: ${camera.name}`);
       isClientConnected = false;
-      if (streamTimeout) clearTimeout(streamTimeout);
+      if (watchdogTimer) clearTimeout(watchdogTimer);
       if (restartTimer) clearTimeout(restartTimer);
       if (ffmpegProcess) {
         ffmpegProcess.kill("SIGKILL");

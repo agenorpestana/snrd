@@ -173,15 +173,34 @@ export default function CameraPlayer({
   }, [camera.id, camera.name, fetchWeather]);
 
   const handleImageError = () => {
-    if (retryCount < 4) {
+    if (retryCount < 8) {
       setTimeout(() => {
-        setRetryCount((prev) => prev + 1);
+        setRetryCount((prev) => {
+          const next = prev + 1;
+          console.log(`[CameraPlayer] Falha na imagem de ${camera.name}. Tentativa de reconexão #${next}/8...`);
+          return next;
+        });
         setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?retry=${retryCount + 1}&t=${Date.now()}`);
-      }, 1500);
+      }, 2000);
     } else {
+      console.warn(`[CameraPlayer] Limite de tentativas atingido para ${camera.name}. Marcando câmera como offline.`);
       setStreamOffline(true);
     }
   };
+
+  // Auto-retry in background when camera goes offline to auto-recover if camera push returns
+  useEffect(() => {
+    if (!streamOffline) return;
+
+    const interval = setInterval(() => {
+      console.log(`[CameraPlayer] Autoreconexão automática em segundo plano para: ${camera.name}`);
+      setStreamOffline(false);
+      setRetryCount(0);
+      setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?autoretry=true&t=${Date.now()}`);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [streamOffline, camera.id, camera.name]);
 
   // Determine weather icon representation
   const getWeatherIcon = (condition: string) => {
