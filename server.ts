@@ -820,6 +820,10 @@ async function startServer() {
     // Build perfect arguments to transcode RTSP/RTMP feed dynamically to Motion JPEG
     // Uses scale=1024:-2 to ensure calculated height is divisible by 2 to prevent silent vertical scale crashes
     const ffmpegArgs = isRtmp ? [
+      "-fflags", "nobuffer",          // Reduce latency and start decoding instantly
+      "-rtmp_live", "live",           // Indicate live stream source bypass
+      "-analyzeduration", "200000",    // Quick codec analysis in microseconds (200ms)
+      "-probesize", "200000",          // Compact probe buffering size in bytes (200KB)
       "-i", streamUrl,
       "-vf", "scale=1024:-2",
       "-q:v", "6",
@@ -840,9 +844,17 @@ async function startServer() {
       "pipe:1"
     ];
 
-    const ffmpeg = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "ignore"] });
+    const ffmpeg = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "pipe"] });
     let buffer = Buffer.alloc(0);
     let hasSentData = false;
+
+    // Listen to stderr for important FFmpeg stream errors or warning feedbacks
+    ffmpeg.stderr.on("data", (chunk) => {
+      const logs = chunk.toString();
+      if (logs.includes("Error") || logs.includes("failed") || logs.includes("timed out") || logs.includes("Connection refused")) {
+        console.warn(`[FFmpeg Stream ${id} Error] ${logs.trim()}`);
+      }
+    });
 
     // Timeout safety: if ffmpeg does not output any video frames within 10 seconds, close stream
     const streamTimeout = setTimeout(() => {

@@ -311,6 +311,16 @@ EOL
     echo -e "${GREEN}Módulo RTMP configurado com sucesso na porta 1935!${NC}"
 fi
 
+# Configuração de Firewall para a porta RTMP (1935)
+if command -v ufw &> /dev/null; then
+    echo -e "${YELLOW}Liberando porta RTMP 1935/tcp no UFW...${NC}"
+    ufw allow 1935/tcp
+fi
+if command -v iptables &> /dev/null; then
+    echo -e "${YELLOW}Liberando porta RTMP 1935/tcp no iptables...${NC}"
+    iptables -A INPUT -p tcp --dport 1935 -j ACCEPT
+fi
+
 # Instalação do Node.js v20 LTS e PM2 para Ubuntu 24.04 (se não estiver instalado)
 if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
     echo -e "${YELLOW}Node.js/npm não encontrados. Instalando Node.js v20 LTS via NodeSource...${NC}"
@@ -472,7 +482,7 @@ server {
     include /etc/nginx/sites-available/${DOMAIN}.custom*;
 }
 EOL
-ln -sf $NGINX_CONF /etc/nginx/sites-enabled/
+ln -sf "/etc/nginx/sites-available/$DOMAIN" "/etc/nginx/sites-enabled/$DOMAIN"
 nginx -t && systemctl restart nginx
 
 # SSL
