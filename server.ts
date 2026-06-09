@@ -820,10 +820,10 @@ async function startServer() {
     // Build perfect arguments to transcode RTSP/RTMP feed dynamically to Motion JPEG
     // Uses scale=1024:-2 to ensure calculated height is divisible by 2 to prevent silent vertical scale crashes
     const ffmpegArgs = isRtmp ? [
-      "-fflags", "nobuffer",          // Reduce latency and start decoding instantly
+      "-fflags", "+genpts+discardcorrupt+nobuffer",          // Reduce latency and start decoding instantly
       "-rtmp_live", "live",           // Indicate live stream source bypass
-      "-analyzeduration", "200000",    // Quick codec analysis in microseconds (200ms)
-      "-probesize", "200000",          // Compact probe buffering size in bytes (200KB)
+      "-analyzeduration", "1500000",   // 1.5 seconds to analyze codec info
+      "-probesize", "1000000",         // 1MB probe size to ensure we get a keyframe
       "-i", streamUrl,
       "-vf", "scale=1024:-2",
       "-q:v", "6",

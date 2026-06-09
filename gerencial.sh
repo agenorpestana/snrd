@@ -15,6 +15,13 @@ if [ "$EUID" -ne 0 ]; then
   exit
 fi
 
+# Limpar possíveis links simbólicos quebrados ou inválidos no Nginx que causam falhas (ex: sites-enabled/bash)
+if [ -d /etc/nginx/sites-enabled/ ]; then
+    echo -e "${YELLOW}Removendo configurações inválidas e links simbólicos quebrados no Nginx...${NC}"
+    rm -f /etc/nginx/sites-enabled/bash
+    find /etc/nginx/sites-enabled/ -type l ! -exec test -e {} \; -delete 2>/dev/null
+fi
+
 # ==========================================
 # 0. Menu Principal: Ação
 # ==========================================
