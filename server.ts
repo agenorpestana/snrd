@@ -813,13 +813,25 @@ async function startServer() {
     stream.isInitialized = false;
     stream.buffer = Buffer.alloc(0);
 
+    let finalUrl = stream.streamUrl;
+    if (stream.isRtmp) {
+      const dbHost = process.env.DB_HOST;
+      if (dbHost && dbHost !== "127.0.0.1" && dbHost !== "localhost") {
+        if (finalUrl.includes("127.0.0.1") || finalUrl.includes("localhost")) {
+          const original = finalUrl;
+          finalUrl = finalUrl.replace("127.0.0.1", dbHost).replace("localhost", dbHost);
+          console.log(`[Stream Orchestrator] Translating RTMP local address in streamUrl from ${original} to ${finalUrl} (using DB_HOST = ${dbHost})`);
+        }
+      }
+    }
+
     const ffmpegArgs = stream.isRtmp ? [
       "-fflags", "+genpts+discardcorrupt+nobuffer",    // Reduz latência e ignora pacotes corrompidos
       "-rtmp_live", "live",                            // Trata entrada como feed RTMP ao vivo legítimo
       "-analyzeduration", "2000000",                   // Análise robusta de codecs (essencial para H.265/varying)
       "-probesize", "1500000",                         // Tamanho de probe confiável para detectar keyframes
       "-threads", "4",                                 // Decodificação multi-threaded de alta performance
-      "-i", stream.streamUrl,
+      "-i", finalUrl,
       "-vf", "scale=1024:-2",                          // Resolução de alta definição impecável de 1024px
       "-q:v", "6",                                     // Visual com detalhe nítido e compressão perfeita
       "-f", "image2pipe",
@@ -833,7 +845,7 @@ async function startServer() {
       "-analyzeduration", "1500000",                   // Análise de handshake para RTSP
       "-probesize", "1000000",                         // Probe dimensionado para início rápido
       "-threads", "4",                                 // Decodificação multi-threaded concorrente
-      "-i", stream.streamUrl,
+      "-i", finalUrl,
       "-vf", "scale=1024:-2",                          // Resolução de alta definição idêntica de 1024px
       "-q:v", "6",                                     // Qualidade visual brilhante correspondente
       "-f", "image2pipe",
@@ -843,7 +855,7 @@ async function startServer() {
       "pipe:1"
     ];
 
-    console.log(`[Stream Orchestrator] Spawning FFmpeg process for ${stream.name} (${stream.isRtmp ? "RTMP" : "RTSP"})`);
+    console.log(`[Stream Orchestrator] Spawning FFmpeg process for ${stream.name} (${stream.isRtmp ? "RTMP" : "RTSP"}). Source URL: ${finalUrl}`);
     stream.ffmpegProcess = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "pipe"] });
 
     const resetWatchdog = (timeoutMs = 15000) => {
