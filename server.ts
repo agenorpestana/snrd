@@ -814,23 +814,32 @@ async function startServer() {
     stream.buffer = Buffer.alloc(0);
 
     const ffmpegArgs = stream.isRtmp ? [
+      "-fflags", "+genpts+discardcorrupt+nobuffer",    // Reduz latência e ignora pacotes corrompidos
+      "-rtmp_live", "live",                            // Trata entrada como feed RTMP ao vivo legítimo
+      "-analyzeduration", "2000000",                   // Análise robusta de codecs (essencial para H.265/varying)
+      "-probesize", "1500000",                         // Tamanho de probe confiável para detectar keyframes
+      "-threads", "4",                                 // Decodificação multi-threaded de alta performance
       "-i", stream.streamUrl,
-      "-vf", "scale=1024:-2",          // Beautiful 1024-width high definition scale
-      "-q:v", "6",                     // High detail visuals with perfect compression
+      "-vf", "scale=1024:-2",                          // Resolução de alta definição impecável de 1024px
+      "-q:v", "6",                                     // Visual com detalhe nítido e compressão perfeita
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
-      "-an",                           // Skip audio stream parsing entirely
-      "-r", "15",                      // 15 FPS cap - perfect smoothness
+      "-an",                                           // Remove áudio para economizar processamento
+      "-r", "15",                                      // 15 FPS de movimento fluido e natural
       "pipe:1"
     ] : [
-      "-rtsp_transport", "tcp",        // Force stable connection over TCP instead of UDP packet loss
+      "-rtsp_transport", "tcp",                        // Força TCP sobre RTSP para evitar drops/visual artifacts
+      "-fflags", "+genpts+discardcorrupt+nobuffer",    // Otimiza bypass de latência e limpa drops
+      "-analyzeduration", "1500000",                   // Análise de handshake para RTSP
+      "-probesize", "1000000",                         // Probe dimensionado para início rápido
+      "-threads", "4",                                 // Decodificação multi-threaded concorrente
       "-i", stream.streamUrl,
-      "-vf", "scale=1024:-2",          // Beautiful 1024-width high definition scale
-      "-q:v", "6",                     // High detail visuals with perfect compression
+      "-vf", "scale=1024:-2",                          // Resolução de alta definição idêntica de 1024px
+      "-q:v", "6",                                     // Qualidade visual brilhante correspondente
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
-      "-an",                           // Skip audio
-      "-r", "15",                      // 15 FPS cap - perfect smoothness
+      "-an",                                           // Ignora canais de áudio
+      "-r", "15",                                      // 15 FPS fluído
       "pipe:1"
     ];
 
