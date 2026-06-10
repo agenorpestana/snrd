@@ -7,6 +7,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
+import net from "net";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -799,7 +800,28 @@ async function startServer() {
 
   const cameraStreams = new Map<string, SharedCameraStream>();
 
-  const startFFmpegForCamera = (stream: SharedCameraStream) => {
+  // Helper to check if a port is open locally on 127.0.0.1
+  const isLocalPortOpen = (port: number): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      socket.setTimeout(350);
+      socket.on("connect", () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.on("timeout", () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.on("error", () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.connect(port, "127.0.0.1");
+    });
+  };
+
+  const startFFmpegForCamera = async (stream: SharedCameraStream) => {
     if (stream.ffmpegProcess) {
       try {
         stream.ffmpegProcess.kill("SIGKILL");
@@ -815,25 +837,43 @@ async function startServer() {
 
     let finalUrl = stream.streamUrl;
     if (stream.isRtmp) {
-      const dbHost = process.env.DB_HOST;
-      if (dbHost && dbHost !== "127.0.0.1" && dbHost !== "localhost") {
-        if (finalUrl.includes("127.0.0.1") || finalUrl.includes("localhost")) {
-          const original = finalUrl;
-          finalUrl = finalUrl.replace("127.0.0.1", dbHost).replace("localhost", dbHost);
-          console.log(`[Stream Orchestrator] Translating RTMP local address in streamUrl from ${original} to ${finalUrl} (using DB_HOST = ${dbHost})`);
+      // Prioritize 127.0.0.1 connection if Nginx-RTMP is running locally on the same server (like on the production VPS)
+      // This completely avoids issues with Firewalls or Hairpin NAT routing loops when a server tries to call its own public IP
+      const isLocalRtmpActive = await isLocalPortOpen(1935);
+      if (isLocalRtmpActive) {
+        console.log(`[Stream Orchestrator] Detected Nginx-RTMP active locally on port 1935. Forcing loopback connection for ${stream.name}`);
+        if (finalUrl.includes("localhost") || finalUrl.includes("127.0.0.1")) {
+          // Keep it local - already points to localhost
+        } else {
+          try {
+            // Rewrite the stream url back to 127.0.0.1 so it bypasses external NAT limits entirely
+            const urlObj = new URL(finalUrl.replace("rtmp://", "http://").replace("rtmps://", "http://"));
+            finalUrl = `rtmp://127.0.0.1:1935${urlObj.pathname}${urlObj.search}`;
+          } catch (e) {
+            finalUrl = `rtmp://127.0.0.1:1935/live/${finalUrl.split("/").pop()}`;
+          }
+        }
+      } else {
+        // If we are running externally (like in the Cloud Run dev sandbox), translate local loopback to the DB_HOST public address
+        const dbHost = process.env.DB_HOST;
+        if (dbHost && dbHost !== "127.0.0.1" && dbHost !== "localhost") {
+          if (finalUrl.includes("127.0.0.1") || finalUrl.includes("localhost")) {
+            const original = finalUrl;
+            finalUrl = finalUrl.replace("127.0.0.1", dbHost).replace("localhost", dbHost);
+            console.log(`[Stream Orchestrator] Translating RTMP local address in streamUrl from ${original} to ${finalUrl} (using DB_HOST = ${dbHost})`);
+          }
         }
       }
     }
 
     const ffmpegArgs = stream.isRtmp ? [
       "-fflags", "+genpts+discardcorrupt+nobuffer",    // Reduz latência e ignora pacotes corrompidos
-      "-rtmp_live", "live",                            // Trata entrada como feed RTMP ao vivo legítimo
-      "-analyzeduration", "2000000",                   // Análise robusta de codecs (essencial para H.265/varying)
-      "-probesize", "1500000",                         // Tamanho de probe confiável para detectar keyframes
+      "-analyzeduration", "1000000",                   // Análise super rápida de codecs (1s max)
+      "-probesize", "800000",                          // Tamanho ideal para RTMP sem introduzir latência
       "-threads", "4",                                 // Decodificação multi-threaded de alta performance
       "-i", finalUrl,
-      "-vf", "scale=1024:-2",                          // Resolução de alta definição impecável de 1024px
-      "-q:v", "6",                                     // Visual com detalhe nítido e compressão perfeita
+      "-vf", "scale=1024:-2",                          // Resolução de alta definição limpa de 1024px
+      "-q:v", "6",                                     // Visual com detalhe nítido e compressão brilhante
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
       "-an",                                           // Remove áudio para economizar processamento
@@ -846,8 +886,8 @@ async function startServer() {
       "-probesize", "1000000",                         // Probe dimensionado para início rápido
       "-threads", "4",                                 // Decodificação multi-threaded concorrente
       "-i", finalUrl,
-      "-vf", "scale=1024:-2",                          // Resolução de alta definição idêntica de 1024px
-      "-q:v", "6",                                     // Qualidade visual brilhante correspondente
+      "-vf", "scale=1024:-2",                          // Resolução de alta definição de 1024px
+      "-q:v", "6",                                     // Qualidade de compressão correspondente
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
       "-an",                                           // Ignora canais de áudio
@@ -1077,6 +1117,44 @@ async function startServer() {
         }
       }
     });
+  });
+
+  // Diagnostic Endpoint to inspect Stream Orchestrator status and FFmpeg outputs
+  app.get("/api/debug/streams", async (req, res) => {
+    try {
+      const active = [];
+      for (const [id, s] of cameraStreams.entries()) {
+        active.push({
+          id,
+          name: s.name,
+          streamUrl: s.streamUrl,
+          isRtmp: s.isRtmp,
+          listenersCount: s.listeners.size,
+          hasSentData: s.hasSentData,
+          isInitialized: s.isInitialized,
+          ffmpegPid: s.ffmpegProcess ? s.ffmpegProcess.pid : null,
+        });
+      }
+
+      let logTail = "";
+      const logPath = path.join(process.cwd(), "ffmpeg_debug.log");
+      if (fs.existsSync(logPath)) {
+        const fullLog = fs.readFileSync(logPath, "utf-8");
+        const lines = fullLog.split("\n");
+        logTail = lines.slice(-200).join("\n"); // Last 200 lines
+      } else {
+        logTail = "Log file ffmpeg_debug.log does not exist yet.";
+      }
+
+      return res.json({
+        isMysqlEnabled,
+        camerasCount: cameraStreams.size,
+        activeStreams: active,
+        logTail
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
   });
 
   // Get all Cameras
