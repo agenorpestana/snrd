@@ -18,7 +18,7 @@ const DB_FILE = path.join(process.cwd(), "cameras.json");
 const DEFAULT_CAMERAS = [
   {
     id: "cam-1",
-    name: "Pista Principal - VIPW SNRD",
+    name: "Pista Principal - VIP SNRD",
     streamUrl: "rtsp://admin:intelbras123@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0",
     city: "Joinville, SC",
     description: "Portaria Principal - Vista panorâmica da pista de pouso (VIPW-1300-MINI-SD). Monitoramento de pousos, decolagens e área perimetral.",
