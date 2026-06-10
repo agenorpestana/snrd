@@ -867,31 +867,37 @@ async function startServer() {
     }
 
     const ffmpegArgs = stream.isRtmp ? [
-      "-fflags", "+genpts+discardcorrupt+nobuffer",    // Reduz latência e ignora pacotes corrompidos
-      "-analyzeduration", "1000000",                   // Análise super rápida de codecs (1s max)
-      "-probesize", "800000",                          // Tamanho ideal para RTMP sem introduzir latência
-      "-threads", "4",                                 // Decodificação multi-threaded de alta performance
+      "-an",                                           // Descarta o stream de áudio no input imediatamente para evitar empacamento de handshake
+      "-sn",                                           // Descarta legendas no input
+      "-rtmp_live", "live",                            // Força comportamento de stream live real-time do Nginx-RTMP
+      "-rtmp_buffer", "100",                           // Minimiza o buffer interno do RTMP para 100ms
+      "-fflags", "+nobuffer+genpts+discardcorrupt",     // Sem buffer na recepção dos pacotes e correção de frames
+      "-flags", "+low_delay",                          // Ativa modo de atraso mínimo de processamento
+      "-analyzeduration", "200000",                    // Limita análise a 200ms para início instantâneo
+      "-probesize", "200000",                          // Tamanho ideal de amostragem inicial (200KB)
+      "-threads", "4",                                 // Multi-threaded decoding de alta performance
       "-i", finalUrl,
-      "-vf", "scale=1024:-2",                          // Resolução de alta definição limpa de 1024px
-      "-q:v", "6",                                     // Visual com detalhe nítido e compressão brilhante
+      "-vf", "scale=1024:-2",                          // Resolução HD mantendo proporção original
+      "-q:v", "6",                                     // Excelente fidelidade e compressão de frame
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
-      "-an",                                           // Remove áudio para economizar processamento
-      "-r", "15",                                      // 15 FPS de movimento fluido e natural
+      "-r", "15",                                      // Taxa de saída otimizada para 15 frames por segundo
       "pipe:1"
     ] : [
-      "-rtsp_transport", "tcp",                        // Força TCP sobre RTSP para evitar drops/visual artifacts
-      "-fflags", "+genpts+discardcorrupt+nobuffer",    // Otimiza bypass de latência e limpa drops
-      "-analyzeduration", "1500000",                   // Análise de handshake para RTSP
-      "-probesize", "1000000",                         // Probe dimensionado para início rápido
-      "-threads", "4",                                 // Decodificação multi-threaded concorrente
+      "-an",                                           // Ignora o áudio da MIBO diretamente na entrada para evitar incompatibilidade ou congelamento de canais PCM/G.711/AAC
+      "-sn",                                           // Ignora legendas
+      "-rtsp_transport", "tcp",                        // RTSP sobre transporte TCP estável contra perda de pacotes
+      "-fflags", "+nobuffer+genpts+discardcorrupt",     // Elimina buffers de sincronismo de entrada do RTSP
+      "-flags", "+low_delay",                          // Reduz filas e atrasos internos de transcodificação
+      "-analyzeduration", "300000",                    // Análise de cabeçalhos de 300ms (ótimo para reconhecer VPS/SPS/PPS em H.265/HEVC)
+      "-probesize", "300000",                          // Probe dimensionado para 300KB otimizando início de keyframes HEVC
+      "-threads", "4",                                 // Garante potência multi-thread para decodificar H.265 (HEVC) de forma estável
       "-i", finalUrl,
-      "-vf", "scale=1024:-2",                          // Resolução de alta definição de 1024px
-      "-q:v", "6",                                     // Qualidade de compressão correspondente
+      "-vf", "scale=1024:-2",                          // Proporção perfeita de 1024px de largura
+      "-q:v", "6",                                     // Visual com detalhe nítido e compressão de alto nível
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
-      "-an",                                           // Ignora canais de áudio
-      "-r", "15",                                      // 15 FPS fluído
+      "-r", "15",                                      // Renderização contínua a 15 frames por segundo
       "pipe:1"
     ];
 
