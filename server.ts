@@ -1080,6 +1080,9 @@ async function startServer() {
 
     // Check if we already have an active transcribing orchestrator stream for this camera ID
     let stream = cameraStreams.get(id);
+    const reqWidth = parseInt(req.query.w as string) || 640;
+    const reqFps = parseInt(req.query.fps as string) || 10;
+    const reqQuality = parseInt(req.query.q as string) || 8;
 
     if (!stream) {
       stream = {
@@ -1095,13 +1098,12 @@ async function startServer() {
         stopTimeout: null,
         hasSentData: false,
         isInitialized: false,
-        // We enforce a consistent, high-quality, high-framerate stable stream for all viewers.
-        // This prevents the server from constantly terminating and restarting FFmpeg (and re-establishing
-        // the RTSP connection) when a viewer changes views, enters fullscreen, or refreshes the page,
-        // which completely avoids camera firmware lockouts, socket timeouts, and black screen lags.
-        width: 1024,
-        fps: 15,
-        quality: 6,
+        // We initialize the stream with the parameters requested by the first viewer (e.g. 512px for grid).
+        // This keeps the CPU usage extremely low and ensures fast handshakes, avoiding watchdog restarts.
+        // Once initialized, we keep the stream settings stable to prevent constant restarts during view toggles.
+        width: reqWidth,
+        fps: reqFps,
+        quality: reqQuality,
         lastFrameTime: Date.now() + 15000
       };
       cameraStreams.set(id, stream);
