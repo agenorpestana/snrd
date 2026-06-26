@@ -796,6 +796,10 @@ async function startServer() {
     hasSentData: boolean;
     lastFrame?: Buffer;          // Cache to store the most recent live image frame
     isInitialized: boolean;      // True after the first actual feed frame is decoded
+    width?: number;
+    fps?: number;
+    quality?: number;
+    lastFrameTime: number;
   }
 
   const cameraStreams = new Map<string, SharedCameraStream>();
@@ -828,12 +832,19 @@ async function startServer() {
       } catch (e) {}
       stream.ffmpegProcess = null;
     }
-    if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
-    if (stream.restartTimer) clearTimeout(stream.restartTimer);
+    if (stream.watchdogTimer) {
+      clearInterval(stream.watchdogTimer);
+      stream.watchdogTimer = null;
+    }
+    if (stream.restartTimer) {
+      clearTimeout(stream.restartTimer);
+      stream.restartTimer = null;
+    }
 
     stream.hasSentData = false;
     stream.isInitialized = false;
     stream.buffer = Buffer.alloc(0);
+    stream.lastFrameTime = Date.now() + 15000; // 15 seconds grace period for initial startup
 
     let finalUrl = stream.streamUrl;
     if (stream.isRtmp) {
@@ -866,6 +877,10 @@ async function startServer() {
       }
     }
 
+    const width = stream.width || 640;
+    const fps = stream.fps || 10;
+    const quality = stream.quality || 8;
+
     const ffmpegArgs = stream.isRtmp ? [
       "-an",                                           // Descarta o stream de áudio no input imediatamente para evitar empacamento de handshake
       "-sn",                                           // Descarta legendas no input
@@ -875,49 +890,35 @@ async function startServer() {
       "-flags", "+low_delay",                          // Ativa modo de atraso mínimo de processamento
       "-analyzeduration", "200000",                    // Limita análise a 200ms para início instantâneo
       "-probesize", "200000",                          // Tamanho ideal de amostragem inicial (200KB)
-      "-threads", "4",                                 // Multi-threaded decoding de alta performance
+      "-threads", "2",                                 // Reduzido para 2 threads para evitar sobrecarga de troca de contexto de CPU
       "-i", finalUrl,
-      "-vf", "scale=1024:-2",                          // Resolução HD mantendo proporção original
-      "-q:v", "6",                                     // Excelente fidelidade e compressão de frame
+      "-vf", `scale=${width}:-2`,                      // Resolução dinâmica
+      "-q:v", `${quality}`,                            // Qualidade dinâmica
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
-      "-r", "15",                                      // Taxa de saída otimizada para 15 frames por segundo
+      "-r", `${fps}`,                                  // FPS dinâmico
       "pipe:1"
     ] : [
       "-an",                                           // Ignora o áudio da MIBO diretamente na entrada para evitar incompatibilidade ou congelamento de canais PCM/G.711/AAC
       "-sn",                                           // Ignora legendas
       "-rtsp_transport", "tcp",                        // RTSP sobre transporte TCP estável contra perda de pacotes
+      "-skip_loop_filter", "all",                      // Pula o deblocking loop filter (GIGANTESCA economia de CPU para H.264 e H.265)
       "-fflags", "+nobuffer+genpts+discardcorrupt",     // Elimina buffers de sincronismo de entrada do RTSP
       "-flags", "+low_delay",                          // Reduz filas e atrasos internos de transcodificação
       "-analyzeduration", "300000",                    // Análise de cabeçalhos de 300ms (ótimo para reconhecer VPS/SPS/PPS em H.265/HEVC)
       "-probesize", "300000",                          // Probe dimensionado para 300KB otimizando início de keyframes HEVC
-      "-threads", "4",                                 // Garante potência multi-thread para decodificar H.265 (HEVC) de forma estável
+      "-threads", "2",                                 // Garante limite de CPU usando 2 threads por processo de câmera
       "-i", finalUrl,
-      "-vf", "scale=1024:-2",                          // Proporção perfeita de 1024px de largura
-      "-q:v", "6",                                     // Visual com detalhe nítido e compressão de alto nível
+      "-vf", `scale=${width}:-2`,                      // Proporção otimizada dinâmica
+      "-q:v", `${quality}`,                            // Qualidade dinâmica
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
-      "-r", "15",                                      // Renderização contínua a 15 frames por segundo
+      "-r", `${fps}`,                                  // Framerate dinâmico
       "pipe:1"
     ];
 
-    console.log(`[Stream Orchestrator] Spawning FFmpeg process for ${stream.name} (${stream.isRtmp ? "RTMP" : "RTSP"}). Source URL: ${finalUrl}`);
+    console.log(`[Stream Orchestrator] Spawning FFmpeg process for ${stream.name} (${stream.isRtmp ? "RTMP" : "RTSP"}). Res: ${width}px, FPS: ${fps}. Source URL: ${finalUrl}`);
     stream.ffmpegProcess = spawn("ffmpeg", ffmpegArgs, { stdio: ["ignore", "pipe", "pipe"] });
-
-    const resetWatchdog = (timeoutMs = 15000) => {
-      if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
-      if (stream.listeners.size === 0) return;
-
-      stream.watchdogTimer = setTimeout(() => {
-        if (stream.listeners.size > 0) {
-          console.warn(`[Stream Orchestrator Watchdog] No frames received in ${timeoutMs / 1000}s for ${stream.name}. Restarting FFmpeg...`);
-          startFFmpegForCamera(stream);
-        }
-      }, timeoutMs);
-    };
-
-    // Use a larger 30-second watchdog for the initial frame negotiation to allow slow cold-starts
-    resetWatchdog(30000);
 
     stream.ffmpegProcess.stdout.on("data", (chunk: Buffer) => {
       if (!stream.hasSentData) {
@@ -939,6 +940,7 @@ async function startServer() {
         const frame = stream.buffer.subarray(soi, eoi + 2);
         stream.lastFrame = frame; // Cache the most recent real JPEG frame
         stream.isInitialized = true;
+        stream.lastFrameTime = Date.now(); // Update frame tick time!
 
         // Broadcast JPEG frame to all connected clients
         for (const emitFrame of stream.listeners) {
@@ -949,8 +951,6 @@ async function startServer() {
           }
         }
 
-        // Once initialized, we use a standard 15-second watchdog for stream freezes
-        resetWatchdog(15000);
         start = eoi + 2;
       }
 
@@ -971,12 +971,18 @@ async function startServer() {
 
     stream.ffmpegProcess.on("error", (err: any) => {
       console.error(`[Stream Orchestrator] FFmpeg error for ${stream.id}:`, err.message);
-      if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
+      if (stream.watchdogTimer) {
+        clearInterval(stream.watchdogTimer);
+        stream.watchdogTimer = null;
+      }
     });
 
     stream.ffmpegProcess.on("close", (code: number | null) => {
       console.log(`[Stream Orchestrator] FFmpeg process for ${stream.name} closed with code ${code}`);
-      if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
+      if (stream.watchdogTimer) {
+        clearInterval(stream.watchdogTimer);
+        stream.watchdogTimer = null;
+      }
       stream.ffmpegProcess = null;
 
       if (stream.listeners.size > 0) {
@@ -986,6 +992,17 @@ async function startServer() {
         }, 1500);
       }
     });
+
+    // Start periodic watchdog checks instead of micro-managing timeouts
+    stream.watchdogTimer = setInterval(() => {
+      if (stream.listeners.size === 0) return;
+      const elapsed = Date.now() - stream.lastFrameTime;
+      if (elapsed > 20000) { // 20 seconds timeout
+        console.warn(`[Stream Orchestrator Watchdog] No frames received in ${Math.round(elapsed / 1000)}s for ${stream.name}. Restarting FFmpeg...`);
+        stream.lastFrameTime = Date.now() + 10000; // 10s grace period for next start
+        startFFmpegForCamera(stream);
+      }
+    }, 5000);
   };
 
   // Live Transcoding Route: Converts RTSP stream to standard multipart/x-mixed-replace (MJPEG)
@@ -1030,6 +1047,10 @@ async function startServer() {
 
     // Check if we already have an active transcribing orchestrator stream for this camera ID
     let stream = cameraStreams.get(id);
+    const reqWidth = parseInt(req.query.w as string) || 640;
+    const reqFps = parseInt(req.query.fps as string) || 10;
+    const reqQuality = parseInt(req.query.q as string) || 8;
+
     if (!stream) {
       stream = {
         id,
@@ -1043,7 +1064,11 @@ async function startServer() {
         restartTimer: null,
         stopTimeout: null,
         hasSentData: false,
-        isInitialized: false
+        isInitialized: false,
+        width: reqWidth,
+        fps: reqFps,
+        quality: reqQuality,
+        lastFrameTime: Date.now() + 15000
       };
       cameraStreams.set(id, stream);
       startFFmpegForCamera(stream);
@@ -1053,6 +1078,17 @@ async function startServer() {
         console.log(`[Stream Orchestrator] Canceling stop timeout for camera ${camera.name} because a new viewer connected!`);
         clearTimeout(stream.stopTimeout);
         stream.stopTimeout = null;
+      }
+
+      // Dynamically upgrade stream resolution/framerate if requested parameters are higher than current settings
+      const currentWidth = stream.width || 640;
+      const currentFps = stream.fps || 10;
+      if (reqWidth > currentWidth || reqFps > currentFps) {
+        console.log(`[Stream Orchestrator] Upgrading quality for ${stream.name} (Resolution: ${currentWidth}px -> ${reqWidth}px, FPS: ${currentFps} -> ${reqFps})`);
+        stream.width = reqWidth;
+        stream.fps = reqFps;
+        stream.quality = Math.min(stream.quality || 8, reqQuality);
+        startFFmpegForCamera(stream);
       }
     }
 
@@ -1110,7 +1146,7 @@ async function startServer() {
           stream.stopTimeout = setTimeout(() => {
             if (stream && stream.listeners.size === 0) {
               console.log(`[Stream Orchestrator] No viewers for 6 seconds. Fully tearing down FFmpeg for ${stream.name}`);
-              if (stream.watchdogTimer) clearTimeout(stream.watchdogTimer);
+              if (stream.watchdogTimer) clearInterval(stream.watchdogTimer);
               if (stream.restartTimer) clearTimeout(stream.restartTimer);
               if (stream.ffmpegProcess) {
                 try {

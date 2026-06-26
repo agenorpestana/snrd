@@ -9,6 +9,7 @@ interface CameraPlayerProps {
   isAdmin: boolean;
   onEditClick?: (camera: Camera) => void;
   onDeleteClick?: (camera: Camera) => void;
+  isGrid?: boolean;
 }
 
 export default function CameraPlayer({
@@ -18,6 +19,7 @@ export default function CameraPlayer({
   isAdmin,
   onEditClick,
   onDeleteClick,
+  isGrid = false,
 }: CameraPlayerProps): React.JSX.Element {
   const [weather, setWeather] = useState<WeatherInfo | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
@@ -26,11 +28,42 @@ export default function CameraPlayer({
   const [streamOffline, setStreamOffline] = useState(false);
   const [simulatedMode, setSimulatedMode] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const [streamUrlWithBuster, setStreamUrlWithBuster] = useState(`/api/cameras/${camera.id}/stream`);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Helper hook to build the optimal stream URL based on view sizing & fullscreen state
+  const getStreamUrl = useCallback((extraParams: Record<string, any> = {}) => {
+    let w = 512;
+    let fps = 8;
+    let q = 9;
+
+    if (isFullscreen) {
+      w = 1024;
+      fps = 15;
+      q = 6;
+    } else if (!isGrid) {
+      w = 800;
+      fps = 12;
+      q = 7;
+    }
+
+    const params = new URLSearchParams({
+      w: String(w),
+      fps: String(fps),
+      q: String(q),
+      t: String(Date.now()),
+    });
+
+    Object.entries(extraParams).forEach(([k, v]) => {
+      params.set(k, String(v));
+    });
+
+    return `/api/cameras/${camera.id}/stream?${params.toString()}`;
+  }, [camera.id, isGrid, isFullscreen]);
+
+  const [streamUrlWithBuster, setStreamUrlWithBuster] = useState(() => getStreamUrl());
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -46,7 +79,7 @@ export default function CameraPlayer({
       // resulting in permanently stalled/gray MJPEG stream buffers once fullscreen exits.
       if (!activeElement) {
         console.log(`[CameraPlayer] Exited fullscreen/amplified mode. Refreshing stream connection for ${camera.name}`);
-        setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
+        setStreamUrlWithBuster(getStreamUrl());
       }
     };
 
@@ -137,8 +170,8 @@ export default function CameraPlayer({
     setStreamOffline(false);
     setSimulatedMode(false);
     setRetryCount(0);
-    setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
-  }, [camera.streamUrl, camera.id]);
+    setStreamUrlWithBuster(getStreamUrl());
+  }, [camera.streamUrl, camera.id, getStreamUrl]);
 
   // Force connection termination on unmount to prevent browser socket limit leaks
   useEffect(() => {
@@ -158,7 +191,7 @@ export default function CameraPlayer({
         setStreamOffline(false);
         setSimulatedMode(false);
         setRetryCount(0);
-        setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?t=${Date.now()}`);
+        setStreamUrlWithBuster(getStreamUrl());
         fetchWeather();
       }
     };
@@ -170,7 +203,7 @@ export default function CameraPlayer({
       document.removeEventListener("visibilitychange", handleVisibilityAndFocus);
       window.removeEventListener("focus", handleVisibilityAndFocus);
     };
-  }, [camera.id, camera.name, fetchWeather]);
+  }, [camera.id, camera.name, fetchWeather, getStreamUrl]);
 
   const handleImageError = () => {
     if (retryCount < 8) {
@@ -180,7 +213,7 @@ export default function CameraPlayer({
           console.log(`[CameraPlayer] Falha na imagem de ${camera.name}. Tentativa de reconexão #${next}/8...`);
           return next;
         });
-        setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?retry=${retryCount + 1}&t=${Date.now()}`);
+        setStreamUrlWithBuster(getStreamUrl({ retry: String(retryCount + 1) }));
       }, 2000);
     } else {
       console.warn(`[CameraPlayer] Limite de tentativas atingido para ${camera.name}. Marcando câmera como offline.`);
@@ -196,11 +229,11 @@ export default function CameraPlayer({
       console.log(`[CameraPlayer] Autoreconexão automática em segundo plano para: ${camera.name}`);
       setStreamOffline(false);
       setRetryCount(0);
-      setStreamUrlWithBuster(`/api/cameras/${camera.id}/stream?autoretry=true&t=${Date.now()}`);
+      setStreamUrlWithBuster(getStreamUrl({ autoretry: "true" }));
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [streamOffline, camera.id, camera.name]);
+  }, [streamOffline, camera.id, camera.name, getStreamUrl]);
 
   // Determine weather icon representation
   const getWeatherIcon = (condition: string) => {

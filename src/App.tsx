@@ -168,6 +168,7 @@ export default function App(): React.JSX.Element {
                       isSelected={selectedId === cam.id}
                       onSelect={() => setSelectedId(cam.id)}
                       isAdmin={isAdmin}
+                      isGrid={true}
                       onEditClick={(c) => {
                         setCameraToEdit(c);
                         setActiveView("admin");
@@ -186,6 +187,7 @@ export default function App(): React.JSX.Element {
                         isSelected={true}
                         onSelect={() => {}}
                         isAdmin={isAdmin}
+                        isGrid={false}
                         onEditClick={(c) => {
                           setCameraToEdit(c);
                           setActiveView("admin");
