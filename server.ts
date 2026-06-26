@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { spawn } from "child_process";
+import { spawn, exec } from "child_process";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import mysql from "mysql2/promise";
@@ -598,6 +598,16 @@ async function fetchRealWeather(city: string): Promise<any | null> {
 }
 
 async function startServer() {
+  // Kill legacy FFmpeg processes on startup to prevent resource starvation on server restarts
+  try {
+    console.log("[Stream Orchestrator] Cleaning up legacy FFmpeg processes on startup...");
+    exec("pkill -9 ffmpeg || killall -9 ffmpeg", (err, stdout, stderr) => {
+      console.log("[Stream Orchestrator] Legacy FFmpeg cleanup completed.");
+    });
+  } catch (e) {
+    console.error("[Stream Orchestrator] Error during startup FFmpeg cleanup:", e);
+  }
+
   // Inicializa banco de dados MySQL de produção ou fallback local de forma assíncrona
   initMysql().catch((err) => {
     console.error("[DB] Falha de conexão assíncrona no MySQL:", err);
@@ -803,6 +813,29 @@ async function startServer() {
   }
 
   const cameraStreams = new Map<string, SharedCameraStream>();
+
+  // Register shutdown hooks to clean up active stream processes on Node.js exit/restart
+  const cleanAllStreamsOnExit = () => {
+    console.log("[Stream Orchestrator] Shutdown detected. Terminating all active FFmpeg processes...");
+    for (const [id, stream] of cameraStreams.entries()) {
+      if (stream.ffmpegProcess) {
+        console.log(`[Stream Orchestrator] Terminating process ${stream.ffmpegProcess.pid} for camera ${stream.name}`);
+        try {
+          stream.ffmpegProcess.kill("SIGKILL");
+        } catch (e) {}
+      }
+    }
+  };
+
+  process.on("SIGINT", () => {
+    cleanAllStreamsOnExit();
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    cleanAllStreamsOnExit();
+    process.exit(0);
+  });
+  process.on("exit", cleanAllStreamsOnExit);
 
   // Helper to check if a port is open locally on 127.0.0.1
   const isLocalPortOpen = (port: number): Promise<boolean> => {
@@ -1047,9 +1080,6 @@ async function startServer() {
 
     // Check if we already have an active transcribing orchestrator stream for this camera ID
     let stream = cameraStreams.get(id);
-    const reqWidth = parseInt(req.query.w as string) || 640;
-    const reqFps = parseInt(req.query.fps as string) || 10;
-    const reqQuality = parseInt(req.query.q as string) || 8;
 
     if (!stream) {
       stream = {
@@ -1065,9 +1095,13 @@ async function startServer() {
         stopTimeout: null,
         hasSentData: false,
         isInitialized: false,
-        width: reqWidth,
-        fps: reqFps,
-        quality: reqQuality,
+        // We enforce a consistent, high-quality, high-framerate stable stream for all viewers.
+        // This prevents the server from constantly terminating and restarting FFmpeg (and re-establishing
+        // the RTSP connection) when a viewer changes views, enters fullscreen, or refreshes the page,
+        // which completely avoids camera firmware lockouts, socket timeouts, and black screen lags.
+        width: 1024,
+        fps: 15,
+        quality: 6,
         lastFrameTime: Date.now() + 15000
       };
       cameraStreams.set(id, stream);
@@ -1078,17 +1112,6 @@ async function startServer() {
         console.log(`[Stream Orchestrator] Canceling stop timeout for camera ${camera.name} because a new viewer connected!`);
         clearTimeout(stream.stopTimeout);
         stream.stopTimeout = null;
-      }
-
-      // Dynamically upgrade stream resolution/framerate if requested parameters are higher than current settings
-      const currentWidth = stream.width || 640;
-      const currentFps = stream.fps || 10;
-      if (reqWidth > currentWidth || reqFps > currentFps) {
-        console.log(`[Stream Orchestrator] Upgrading quality for ${stream.name} (Resolution: ${currentWidth}px -> ${reqWidth}px, FPS: ${currentFps} -> ${reqFps})`);
-        stream.width = reqWidth;
-        stream.fps = reqFps;
-        stream.quality = Math.min(stream.quality || 8, reqQuality);
-        startFFmpegForCamera(stream);
       }
     }
 
