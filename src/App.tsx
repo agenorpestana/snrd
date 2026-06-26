@@ -13,6 +13,38 @@ export default function App(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<"live" | "admin" | "recordings">("live");
   const [cameraToEdit, setCameraToEdit] = useState<Camera | null>(null);
+  const [selectedCity, setSelectedCity] = useState<string | null>(null);
+
+  // Extract unique list of cities sorted alphabetically
+  const cities = Array.from(new Set(cameras.map((c) => c.city).filter(Boolean))).sort();
+
+  // Auto-select the first city when cameras load or update
+  useEffect(() => {
+    if (cities.length > 0) {
+      if (!selectedCity || !cities.includes(selectedCity)) {
+        setSelectedCity(cities[0]);
+      }
+    } else {
+      setSelectedCity(null);
+    }
+  }, [cameras, cities, selectedCity]);
+
+  // Sync selectedId with the active selectedCity's first camera
+  useEffect(() => {
+    if (selectedCity) {
+      const cityCams = cameras.filter((c) => c.city === selectedCity);
+      if (cityCams.length > 0) {
+        const hasSelectedInCity = cityCams.some((c) => c.id === selectedId);
+        if (!hasSelectedInCity) {
+          setSelectedId(cityCams[0].id);
+        }
+      }
+    }
+  }, [selectedCity, cameras, selectedId]);
+
+  const filteredCameras = selectedCity
+    ? cameras.filter((c) => c.city === selectedCity)
+    : cameras;
 
   // Load cameras and admin session persistence on mount
   useEffect(() => {
@@ -57,6 +89,9 @@ export default function App(): React.JSX.Element {
   // Callback to insert newly created camera
   const handleAddCamera = (newCam: Camera) => {
     setCameras((prev) => [...prev, newCam]);
+    if (newCam.city) {
+      setSelectedCity(newCam.city);
+    }
     setSelectedId(newCam.id);
   };
 
@@ -143,6 +178,30 @@ export default function App(): React.JSX.Element {
                 </div>
               </div>
 
+              {/* CITIES FILTER TABS */}
+              {!loading && cities.length > 0 && (
+                <div className="bg-[#101c1f]/40 p-1.5 rounded-xl border border-slate-850 backdrop-blur-sm flex flex-col sm:flex-row sm:items-center gap-2 overflow-x-auto">
+                  <div className="text-xs font-bold uppercase text-[#00A767] px-3 py-1.5 sm:border-r border-slate-800 mr-1 select-none whitespace-nowrap">
+                    Cidades / Aeroportos:
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {cities.map((city) => (
+                      <button
+                        key={city}
+                        onClick={() => setSelectedCity(city)}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer ${
+                          selectedCity === city
+                            ? "bg-[#00A767] text-white font-bold shadow-md shadow-[#00A767]/15 scale-[1.02]"
+                            : "bg-[#101c1f] text-slate-400 hover:text-slate-150 hover:bg-slate-800 border border-slate-800/80"
+                        }`}
+                      >
+                        {city}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {loading ? (
                 <div className="h-[400px] bg-slate-950/40 rounded-xl border border-slate-900 flex flex-col items-center justify-center space-y-3">
                   <RefreshCw className="h-8 w-8 animate-spin text-[#00A767]" />
@@ -161,7 +220,7 @@ export default function App(): React.JSX.Element {
               ) : viewMode === "grid" ? (
                 /* GRID LAYOUT: Displays all streams concurrently */
                 <div id="cameras-grid-view" className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {cameras.map((cam) => (
+                  {filteredCameras.map((cam) => (
                     <CameraPlayer
                       key={cam.id}
                       camera={cam}
@@ -197,9 +256,9 @@ export default function App(): React.JSX.Element {
                       
                       {/* Horizontal secondary carousel to toggle theater target */}
                       <div className="bg-[#101c1f]/40 p-3 rounded-lg border border-slate-800/80">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Comutar Visualização:</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Comutar Visualização ({selectedCity}):</p>
                         <div className="flex space-x-3 overflow-x-auto pb-1">
-                          {cameras.map((c) => (
+                          {filteredCameras.map((c) => (
                             <button
                               id={`carousel-toggle-${c.id}`}
                               key={c.id}
@@ -263,14 +322,10 @@ export default function App(): React.JSX.Element {
       <footer className="bg-[#0b1315] border-t border-slate-900 text-slate-500 text-xs py-8 select-none">
         <div className="max-w-7xl mx-auto px-4 md:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="font-mono text-[10px] leading-relaxed text-center md:text-left">
-            <p className="text-slate-450 uppercase font-semibold">Copyright © 2026 SNRD - Todos os direitos reservados.</p>
+            <p className="text-slate-450 uppercase font-semibold">Copyright © 2026 AEROCAM - Todos os direitos reservados.</p>
             <p className="mt-0.5">Versão WEB V3.2.1.1865099 | ONVIF Perfil S, T e G | Sistema V2.4</p>
           </div>
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-1.5 bg-[#101c1f] px-3 py-1 rounded-full border border-slate-800 text-[10px] font-mono text-slate-400">
-              <Server className="h-3 w-3 text-emerald-400" />
-              <span>CONTAINER CLOUD LOCAL: IP 127.0.0.1</span>
-            </div>
             <div className="flex items-center space-x-1.5 bg-[#101c1f] px-3 py-1 rounded-full border border-slate-800 text-[10px] font-mono text-slate-400">
               <ShieldCheck className="h-3 w-3 text-[#00A767]" />
               <span>CRIPTOGRAFIA SHA-256</span>

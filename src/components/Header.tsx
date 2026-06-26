@@ -32,7 +32,7 @@ export default function Header({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-bold tracking-tight text-sm xs:text-base sm:text-lg font-sans">SNRD MONITORAMENTO</span>
+              <span className="font-bold tracking-tight text-sm xs:text-base sm:text-lg font-sans">MONITORAMENTO AEROPORTOS</span>
             </div>
           </div>
         </div>
@@ -40,7 +40,7 @@ export default function Header({
         {/* Center Title Accent */}
         <div className="hidden md:flex items-center space-x-2 bg-emerald-800/40 px-4 py-1.5 rounded-full border border-emerald-500/20">
           <div className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></div>
-          <span className="text-xs font-semibold tracking-wide">CENTRAL DE MONITORAMENTO SNRD</span>
+          <span className="text-xs font-semibold tracking-wide">CENTRAL DE MONITORAMENTO CÂMERAS AEROPORTOS</span>
         </div>
 
         {/* Right Controls */}
